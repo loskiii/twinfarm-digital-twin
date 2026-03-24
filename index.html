@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>TwinFarm | Digital Twin for Coriander Farm Management</title>
+    
+    <!-- Fonts & Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Montserrat:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Libraries -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    
+    <!-- Three.js for Realistic 3D -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.128.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.128.0/examples/jsm/"
+            }
+        }
+    </script>
+    
+    <!-- Styles -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Skip to content link for accessibility -->
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
+    <!-- Navigation -->
+    <header class="site-header">
+        <nav class="navbar container">
+            <div class="logo">
+                <i class="fas fa-seedling" aria-hidden="true"></i>
+                <span>Twin<span class="logo-highlight">Farm</span></span>
+            </div>
+            <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Menu">
+                <i class="fas fa-bars"></i>
+            </button>
+            <ul class="nav-links" id="nav-links">
+                <li><a href="#dashboard" class="nav-link active">Dashboard</a></li>
+                <li><a href="#virtual-farm" class="nav-link">3D Farm</a></li>
+                <li><a href="#predictions" class="nav-link">Predictions</a></li>
+                <li><a href="#map" class="nav-link">Field Map</a></li>
+                <li><a href="#chatbot" class="nav-link">Assistant</a></li>
+            </ul>
+            <div class="auth-buttons" id="auth-buttons">
+                <button type="button" class="btn btn-outline" id="signin-btn">Sign In</button>
+                <button type="button" class="btn btn-primary" id="signup-btn">Get Started</button>
+            </div>
+            <div class="user-indicator" id="user-indicator" style="display: none;">
+                <div class="user-avatar">
+                    <i class="fas fa-user"></i>
+                </div>
+                <span class="user-name" id="user-name">Farmer</span>
+                <i class="fas fa-chevron-down"></i>
+                <div class="user-dropdown" id="user-dropdown">
+                    <a href="#"><i class="fas fa-user"></i> Profile</a>
+                    <a href="#"><i class="fas fa-tachometer-alt"></i> Dashboard</a>
+                    <a href="#"><i class="fas fa-cog"></i> Settings</a>
+                    <hr>
+                    <a href="#" id="signout-link"><i class="fas fa-sign-out-alt"></i> Sign Out</a>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <main id="main-content">
+        <!-- Hero Section -->
+        <section class="hero">
+            <div class="container">
+                <div class="hero-grid">
+                    <div class="hero-text">
+                        <div class="hero-badge">
+                            <i class="fas fa-leaf"></i> Smart Coriander Farming
+                        </div>
+                        <h1>Digital Twin for <span class="text-gradient">Coriander</span> Farm Management</h1>
+                        <p>Monitor your coriander fields in realistic 3D, predict yields, optimize irrigation, and make data-driven decisions with our advanced Digital Twin platform.</p>
+                        <div class="hero-buttons">
+                            <button class="btn btn-primary" id="view-demo-btn">
+                                <i class="fas fa-play"></i> Explore 3D Farm
+                            </button>
+                            <button class="btn btn-outline" id="learn-more-btn">
+                                <i class="fas fa-info-circle"></i> Learn More
+                            </button>
+                        </div>
+                        <div class="hero-stats">
+                            <div class="stat">
+                                <span class="stat-number">30-40%</span>
+                                <span class="stat-label">Water Savings</span>
+                            </div>
+                            <div class="stat">
+                                <span class="stat-number">15-20%</span>
+                                <span class="stat-label">Yield Increase</span>
+                            </div>
+                            <div class="stat">
+                                <span class="stat-number">7-14 days</span>
+                                <span class="stat-label">Early Warning</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="hero-visual">
+                        <div class="hero-card">
+                            <div class="coriander-preview">
+                                <i class="fas fa-seedling"></i>
+                                <div class="preview-text">
+                                    <h3>Coriander Field</h3>
+                                    <p>Real-time health: <span class="health-value">87%</span></p>
+                                    <div class="preview-progress">
+                                        <div class="progress-fill" style="width: 87%"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Dashboard Section -->
+        <section id="dashboard" class="section">
+            <div class="container">
+                <div class="section-header">
+                    <h2>Farm Dashboard</h2>
+                    <p>Real-time insights for your coriander fields</p>
+                </div>
+                
+                <div class="dashboard-grid">
+                    <div class="dashboard-card">
+                        <div class="card-header">
+                            <i class="fas fa-tint"></i>
+                            <h3>Soil Moisture</h3>
+                        </div>
+                        <div class="card-value" id="soil-moisture-value">68%</div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="soil-moisture-fill" style="width: 68%"></div>
+                        </div>
+                        <p class="card-status" id="soil-status">Optimal for coriander</p>
+                    </div>
+                    
+                    <div class="dashboard-card">
+                        <div class="card-header">
+                            <i class="fas fa-leaf"></i>
+                            <h3>Crop Health</h3>
+                        </div>
+                        <div class="card-value" id="crop-health-value">8.4/10</div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="health-fill" style="width: 84%"></div>
+                        </div>
+                        <p class="card-status" id="health-status">Good condition</p>
+                    </div>
+                    
+                    <div class="dashboard-card">
+                        <div class="card-header">
+                            <i class="fas fa-thermometer-half"></i>
+                            <h3>Soil Temperature</h3>
+                        </div>
+                        <div class="card-value" id="soil-temp-value">23°C</div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="temp-fill" style="width: 46%"></div>
+                        </div>
+                        <p class="card-status" id="temp-status">Ideal for coriander</p>
+                    </div>
+                    
+                    <div class="dashboard-card">
+                        <div class="card-header">
+                            <i class="fas fa-chart-line"></i>
+                            <h3>Growth Stage</h3>
+                        </div>
+                        <div class="card-value" id="growth-stage-value">Vegetative</div>
+                        <div class="stage-indicator">
+                            <div class="stage-dot active"></div>
+                            <div class="stage-dot"></div>
+                            <div class="stage-dot"></div>
+                            <div class="stage-dot"></div>
+                        </div>
+                        <p class="card-status">Days to harvest: <span id="days-to-harvest">45</span> days</p>
+                    </div>
+                </div>
+                
+                <div class="dashboard-row">
+                    <div class="dashboard-card wide">
+                        <div class="card-header">
+                            <i class="fas fa-cloud-sun"></i>
+                            <h3>Weather Forecast</h3>
+                        </div>
+                        <div id="weather-chart"></div>
+                    </div>
+                    <div class="dashboard-card">
+                        <div class="card-header">
+                            <i class="fas fa-microchip"></i>
+                            <h3>Sensor Status</h3>
+                        </div>
+                        <div class="sensor-list">
+                            <div class="sensor-item">
+                                <span>Soil Moisture Sensor</span>
+                                <span class="sensor-badge active">Active</span>
+                            </div>
+                            <div class="sensor-item">
+                                <span>Temperature Sensor</span>
+                                <span class="sensor-badge active">Active</span>
+                            </div>
+                            <div class="sensor-item">
+                                <span>NDVI Satellite Data</span>
+                                <span class="sensor-badge simulated">Simulated</span>
+                            </div>
+                            <div class="sensor-item">
+                                <span>Weather API</span>
+                                <span class="sensor-badge active">Active</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Realistic 3D Virtual Farm Section -->
+        <section id="virtual-farm" class="section section-alt">
+            <div class="container">
+                <div class="section-header">
+                    <h2>Realistic 3D Digital Twin Farm</h2>
+                    <p>Interactive 3D visualization with realistic terrain, crops, and environmental effects</p>
+                </div>
+                
+                <div class="farm-container">
+                    <div class="farm-controls-bar">
+                        <div class="controls-left">
+                            <button class="control-btn" id="reset-camera-btn" title="Reset Camera"><i class="fas fa-sync-alt"></i></button>
+                            <button class="control-btn" id="toggle-shadows-btn" title="Toggle Shadows"><i class="fas fa-sun"></i></button>
+                            <button class="control-btn" id="toggle-wireframe-btn" title="Toggle Wireframe"><i class="fas fa-border-all"></i></button>
+                        </div>
+                        <div class="farm-legend">
+                            <span><span class="legend-color" style="background: #4CAF50;"></span> Healthy Coriander</span>
+                            <span><span class="legend-color" style="background: #FF9800;"></span> Moderate Health</span>
+                            <span><span class="legend-color" style="background: #F44336;"></span> Needs Attention</span>
+                            <span><span class="legend-color" style="background: #795548;"></span> Bare Soil</span>
+                        </div>
+                    </div>
+                    <div id="farm-3d-container" style="width: 100%; height: 600px; background: linear-gradient(135deg, #1a472a, #0a2f1a); border-radius: 16px; overflow: hidden;"></div>
+                    <div class="field-info-panel" id="field-info-panel" style="display: none;">
+                        <button class="close-panel" id="close-panel-btn">&times;</button>
+                        <h3 id="field-name">North Field</h3>
+                        <div class="field-detail-grid">
+                            <div class="detail-item">
+                                <span class="detail-label">Crop:</span>
+                                <span class="detail-value" id="field-crop">Coriander</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Health:</span>
+                                <span class="detail-value" id="field-health">85%</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Area:</span>
+                                <span class="detail-value" id="field-area">8.5 acres</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Soil Moisture:</span>
+                                <span class="detail-value" id="field-moisture">68%</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Predicted Yield:</span>
+                                <span class="detail-value" id="field-yield">8.2 tons/ha</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Water Need:</span>
+                                <span class="detail-value" id="field-water">1200 L/day</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="farm-instructions">
+                        <i class="fas fa-mouse-pointer"></i> Drag to rotate | Right-click + drag to pan | Scroll to zoom
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Predictions Section -->
+        <section id="predictions" class="section">
+            <div class="container">
+                <div class="section-header">
+                    <h2>AI Predictions & Realistic Growth Simulation</h2>
+                    <p>Data-driven insights for better coriander farming decisions</p>
+                </div>
+                
+                <div class="predictions-grid">
+                    <div class="prediction-card">
+                        <i class="fas fa-chart-line prediction-icon"></i>
+                        <h3>Yield Prediction</h3>
+                        <div class="prediction-value" id="yield-prediction">8.2</div>
+                        <div class="prediction-unit">tons/hectare</div>
+                        <div class="confidence">
+                            <span>Confidence</span>
+                            <div class="confidence-bar">
+                                <div class="confidence-fill" id="yield-confidence" style="width: 87%"></div>
+                            </div>
+                            <span class="confidence-value" id="yield-confidence-text">87%</span>
+                        </div>
+                        <button class="btn btn-outline btn-small simulate-btn" data-type="yield">Run Simulation</button>
+                    </div>
+                    
+                    <div class="prediction-card">
+                        <i class="fas fa-tint prediction-icon"></i>
+                        <h3>Irrigation Schedule</h3>
+                        <div class="prediction-value" id="irrigation-amount">1,250</div>
+                        <div class="prediction-unit">liters per day</div>
+                        <div class="irrigation-timing">
+                            <i class="far fa-clock"></i>
+                            <span>Next irrigation: <strong id="irrigation-time">48 hours</strong></span>
+                        </div>
+                        <button class="btn btn-outline btn-small simulate-btn" data-type="irrigation">Optimize</button>
+                    </div>
+                    
+                    <div class="prediction-card">
+                        <i class="fas fa-calendar-alt prediction-icon"></i>
+                        <h3>Harvest Window</h3>
+                        <div class="prediction-value" id="harvest-days">45</div>
+                        <div class="prediction-unit">days from now</div>
+                        <div class="harvest-range">
+                            <span>Optimal range: <strong id="harvest-range">42-48 days</strong></span>
+                        </div>
+                        <button class="btn btn-outline btn-small simulate-btn" data-type="harvest">Update Forecast</button>
+                    </div>
+                </div>
+                
+                <div class="simulation-section">
+                    <h3>Realistic Coriander Growth Simulator</h3>
+                    <p>Watch coriander grow in realistic 3D visualization as you adjust environmental parameters</p>
+                    <div class="simulator-controls">
+                        <div class="sim-control">
+                            <label>Temperature (°C)</label>
+                            <input type="range" id="sim-temp" min="15" max="35" value="23" step="0.5">
+                            <span id="temp-value-display">23°C</span>
+                        </div>
+                        <div class="sim-control">
+                            <label>Soil Moisture (%)</label>
+                            <input type="range" id="sim-moisture" min="20" max="80" value="65">
+                            <span id="moisture-value-display">65%</span>
+                        </div>
+                        <div class="sim-control">
+                            <label>Growth Days</label>
+                            <input type="range" id="sim-days" min="0" max="120" value="45">
+                            <span id="days-value-display">45 days</span>
+                        </div>
+                        <button class="btn btn-primary" id="run-simulation-btn">Update 3D Growth</button>
+                    </div>
+                    <div class="growth-chart-container">
+                        <canvas id="growth-chart" width="800" height="300"></canvas>
+                    </div>
+                    <div class="growth-status" id="growth-status">
+                        <div class="growth-stage-indicator">
+                            <span class="stage-label">Germination</span>
+                            <span class="stage-label">Seedling</span>
+                            <span class="stage-label">Vegetative</span>
+                            <span class="stage-label">Flowering</span>
+                            <span class="stage-label">Maturation</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Map Section -->
+        <section id="map" class="section section-alt">
+            <div class="container">
+                <div class="section-header">
+                    <h2>NDVI Field Map</h2>
+                    <p>Satellite-based vegetation health index for coriander fields</p>
+                </div>
+                
+                <div class="map-container">
+                    <div id="farm-map"></div>
+                    <div class="map-legend">
+                        <div class="legend-title">NDVI Scale</div>
+                        <div class="legend-gradient"></div>
+                        <div class="legend-labels">
+                            <span>Low</span>
+                            <span>Moderate</span>
+                            <span>High</span>
+                        </div>
+                        <div class="map-stats">
+                            <p><i class="fas fa-chart-line"></i> Average NDVI: <strong id="avg-ndvi">0.68</strong></p>
+                            <p><i class="fas fa-calendar"></i> Last Update: <span id="map-update-time">Just now</span></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chatbot Section -->
+        <section id="chatbot" class="section">
+            <div class="container">
+                <div class="section-header">
+                    <h2>AI Farming Assistant</h2>
+                    <p>Ask questions about coriander farming, predictions, and platform features</p>
+                </div>
+                
+                <div class="chatbot-container">
+                    <div class="chatbot-sidebar">
+                        <div class="quick-actions">
+                            <h4>Quick Questions</h4>
+                            <button class="quick-question">What is optimal soil moisture for coriander?</button>
+                            <button class="quick-question">When should I harvest coriander?</button>
+                            <button class="quick-question">How is NDVI calculated?</button>
+                            <button class="quick-question">Explain the irrigation schedule</button>
+                            <button class="quick-question">What causes coriander leaf yellowing?</button>
+                        </div>
+                        <div class="coriander-tips">
+                            <h4><i class="fas fa-lightbulb"></i> Coriander Tip</h4>
+                            <p>Coriander grows best in well-drained soil with consistent moisture. Avoid waterlogging to prevent root rot.</p>
+                        </div>
+                    </div>
+                    <div class="chatbot-window">
+                        <div class="chat-header">
+                            <div class="chat-avatar">
+                                <i class="fas fa-robot"></i>
+                            </div>
+                            <div>
+                                <h4>TwinFarm Assistant</h4>
+                                <small>Online • Specialized in coriander farming</small>
+                            </div>
+                        </div>
+                        <div class="chat-messages" id="chat-messages">
+                            <div class="message bot-message">
+                                <div class="message-content">Hello! I'm your coriander farming assistant. Ask me anything about field conditions, predictions, or coriander best practices!</div>
+                            </div>
+                        </div>
+                        <div class="chat-input-area">
+                            <input type="text" id="chat-input" placeholder="Type your question..." aria-label="Chat message">
+                            <button id="send-message-btn" aria-label="Send message"><i class="fas fa-paper-plane"></i></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <div class="footer-grid">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <i class="fas fa-seedling"></i>
+                        <span>Twin<span>Farm</span></span>
+                    </div>
+                    <p>Digital Twin technology for sustainable coriander farming in Kenya.</p>
+                    <div class="footer-social">
+                        <a href="#"><i class="fab fa-twitter"></i></a>
+                        <a href="#"><i class="fab fa-linkedin"></i></a>
+                        <a href="#"><i class="fab fa-github"></i></a>
+                    </div>
+                </div>
+                <div class="footer-links">
+                    <h4>Platform</h4>
+                    <ul>
+                        <li><a href="#dashboard">Dashboard</a></li>
+                        <li><a href="#virtual-farm">3D Farm</a></li>
+                        <li><a href="#predictions">Predictions</a></li>
+                        <li><a href="#map">NDVI Map</a></li>
+                    </ul>
+                </div>
+                <div class="footer-links">
+                    <h4>Resources</h4>
+                    <ul>
+                        <li><a href="#">Coriander Guide</a></li>
+                        <li><a href="#">Documentation</a></li>
+                        <li><a href="#">API Reference</a></li>
+                    </ul>
+                </div>
+                <div class="footer-links">
+                    <h4>Project</h4>
+                    <ul>
+                        <li><span>JKUAT Final Year</span></li>
+                        <li><span>BCT 2406 : Project</span></li>
+                        <li><span>Supervisor: Dr. Lawrence Nderu</span></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2025 TwinFarm | AgriMirror</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Modals (Authentication) -->
+    <div id="signin-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Sign In</h2>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="signin-form">
+                    <div class="form-group">
+                        <label for="signin-email">Email</label>
+                        <input type="email" id="signin-email" placeholder="farmer@example.com" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="signin-password">Password</label>
+                        <input type="password" id="signin-password" placeholder="••••••••" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block">Sign In</button>
+                </form>
+                <div class="modal-divider">or</div>
+                <button class="btn btn-outline btn-block" id="demo-signin">Use Demo Account</button>
+                <p class="modal-footer-text">Don't have an account? <a href="#" id="switch-to-signup">Sign up</a></p>
+            </div>
+        </div>
+    </div>
+
+    <div id="signup-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Create Account</h2>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="signup-form">
+                    <div class="form-row">
+                        <div class="form-group half">
+                            <label for="signup-firstname">First Name</label>
+                            <input type="text" id="signup-firstname" required>
+                        </div>
+                        <div class="form-group half">
+                            <label for="signup-lastname">Last Name</label>
+                            <input type="text" id="signup-lastname" required>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="signup-email">Email</label>
+                        <input type="email" id="signup-email" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="signup-farm-size">Farm Size (acres)</label>
+                        <select id="signup-farm-size">
+                            <option value="">Select</option>
+                            <option value="small">Small (0-5 acres)</option>
+                            <option value="medium">Medium (5-50 acres)</option>
+                            <option value="large">Large (50+ acres)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="signup-password">Password</label>
+                        <input type="password" id="signup-password" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="signup-confirm">Confirm Password</label>
+                        <input type="password" id="signup-confirm" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block">Create Account</button>
+                </form>
+                <p class="modal-footer-text">Already have an account? <a href="#" id="switch-to-signin">Sign in</a></p>
+            </div>
+        </div>
+    </div>
+
+    <div id="notification" class="notification" style="display: none;"></div>
+
+    <script type="module" src="script.js"></script>
+    <script src="mock-data.js"></script>
+</body>
+</html>
