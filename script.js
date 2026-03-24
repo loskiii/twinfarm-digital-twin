@@ -33,6 +33,50 @@ const fieldData = [
     { name: "Irrigation Field", x: 16, z: 4, width: 8, height: 6, color: 0x8BC34A, health: 0.72, area: 9.2, moisture: 62 }
 ];
 
+// ==================== MOBILE MENU TOGGLE ====================
+function initializeMobileMenu() {
+    const mobileBtn = document.getElementById('mobile-menu-btn');
+    const navLinks = document.getElementById('nav-links');
+    
+    if (mobileBtn && navLinks) {
+        mobileBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            navLinks.classList.toggle('show');
+            
+            const icon = mobileBtn.querySelector('i');
+            if (navLinks.classList.contains('show')) {
+                icon.classList.remove('fa-bars');
+                icon.classList.add('fa-times');
+            } else {
+                icon.classList.remove('fa-times');
+                icon.classList.add('fa-bars');
+            }
+        });
+        
+        document.addEventListener('click', (e) => {
+            if (!navLinks.contains(e.target) && !mobileBtn.contains(e.target)) {
+                navLinks.classList.remove('show');
+                const icon = mobileBtn.querySelector('i');
+                if (icon) {
+                    icon.classList.remove('fa-times');
+                    icon.classList.add('fa-bars');
+                }
+            }
+        });
+        
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.addEventListener('click', () => {
+                navLinks.classList.remove('show');
+                const icon = mobileBtn.querySelector('i');
+                if (icon) {
+                    icon.classList.remove('fa-times');
+                    icon.classList.add('fa-bars');
+                }
+            });
+        });
+    }
+}
+
 // ==================== INITIALIZATION ====================
 document.addEventListener('DOMContentLoaded', function() {
     console.log("TwinFarm - Realistic 3D Coriander Digital Twin Platform Initializing...");
@@ -45,6 +89,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeChatbot();
     initializeAuth();
     initializeDemoButton();
+    initializeMobileMenu(); // Mobile menu toggle
     
     console.log("TwinFarm Platform Ready!");
 });
@@ -88,13 +133,13 @@ function initializeRealistic3DFarm() {
     controls.zoomSpeed = 1.2;
     controls.panSpeed = 0.8;
     controls.maxPolarAngle = Math.PI / 2.2;
+    controls.touchRotate = true;
+    controls.touchZoom = true;
     
     // Lighting
-    // Ambient light
     const ambientLight = new THREE.AmbientLight(0x404060, 0.6);
     scene.add(ambientLight);
     
-    // Sun light
     sunLight = new THREE.DirectionalLight(0xfff5e6, 1.2);
     sunLight.position.set(30, 40, 20);
     sunLight.castShadow = true;
@@ -109,17 +154,15 @@ function initializeRealistic3DFarm() {
     sunLight.shadow.camera.bottom = -15;
     scene.add(sunLight);
     
-    // Fill light
     const fillLight = new THREE.PointLight(0x4466cc, 0.3);
     fillLight.position.set(-10, 20, 10);
     scene.add(fillLight);
     
-    // Back rim light
     const rimLight = new THREE.PointLight(0xffaa66, 0.4);
     rimLight.position.set(0, 15, -15);
     scene.add(rimLight);
     
-    // Ground Plane with grass texture
+    // Ground Plane
     const groundGeometry = new THREE.CircleGeometry(35, 32);
     const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x5a8c5a, roughness: 0.8, metalness: 0.1 });
     const ground = new THREE.Mesh(groundGeometry, groundMaterial);
@@ -141,7 +184,7 @@ function initializeRealistic3DFarm() {
         scene.add(blade);
     }
     
-    // Create terrain elevation (small hills)
+    // Terrain elevation
     const terrainGroup = new THREE.Group();
     for (let i = 0; i < 60; i++) {
         const hillGeo = new THREE.CylinderGeometry(1.5, 2.5, 0.4, 8);
@@ -158,7 +201,7 @@ function initializeRealistic3DFarm() {
     }
     scene.add(terrainGroup);
     
-    // Create Trees around perimeter
+    // Create Trees
     function createTree(x, z) {
         const treeGroup = new THREE.Group();
         const trunkMat = new THREE.MeshStandardMaterial({ color: 0x8B5A2B, roughness: 0.7 });
@@ -193,7 +236,6 @@ function initializeRealistic3DFarm() {
     
     // Create fields
     fieldData.forEach((field, idx) => {
-        // Field base (soil)
         const soilMat = new THREE.MeshStandardMaterial({ color: 0x8B5A2B, roughness: 0.9 });
         const fieldBase = new THREE.Mesh(new THREE.BoxGeometry(field.width, 0.2, field.height), soilMat);
         fieldBase.position.set(field.x, -0.1, field.z);
@@ -202,7 +244,6 @@ function initializeRealistic3DFarm() {
         scene.add(fieldBase);
         fieldMeshes.push(fieldBase);
         
-        // Field border (wooden fence)
         const woodMat = new THREE.MeshStandardMaterial({ color: 0xCDA87A });
         const borderHeight = 0.15;
         const borderDepth = 0.1;
@@ -221,7 +262,6 @@ function initializeRealistic3DFarm() {
             scene.add(border);
         });
         
-        // Create coriander plants
         const plantCount = Math.floor(60 + field.health * 80);
         const plantGroup = new THREE.Group();
         
@@ -237,7 +277,6 @@ function initializeRealistic3DFarm() {
         }
         scene.add(plantGroup);
         
-        // Label
         const div = document.createElement('div');
         div.textContent = `${field.name}\n${(field.health * 100).toFixed(0)}% Health`;
         div.style.color = 'white';
@@ -255,7 +294,7 @@ function initializeRealistic3DFarm() {
         fields.push({ ...field, mesh: fieldBase, plants: plantGroup, label });
     });
     
-    // Add farm house
+    // Farm house
     const houseGroup = new THREE.Group();
     const houseBase = new THREE.Mesh(new THREE.BoxGeometry(3, 2, 3), new THREE.MeshStandardMaterial({ color: 0xE8DDCB }));
     houseBase.position.y = 1;
@@ -275,7 +314,7 @@ function initializeRealistic3DFarm() {
     houseGroup.position.set(-18, -0.2, -12);
     scene.add(houseGroup);
     
-    // Add water tower
+    // Water tower
     const towerGroup = new THREE.Group();
     const towerPole = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.7, 3, 8), new THREE.MeshStandardMaterial({ color: 0xAA8C6E }));
     towerPole.position.y = 1.5;
@@ -290,7 +329,7 @@ function initializeRealistic3DFarm() {
     towerGroup.position.set(20, -0.2, -15);
     scene.add(towerGroup);
     
-    // Sky and clouds
+    // Clouds
     const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xccccaa });
     const cloudPositions = [[-15, 15, -10], [0, 16, -5], [12, 15, -12], [-5, 14, 5], [8, 13, 8]];
     cloudPositions.forEach(pos => {
@@ -303,12 +342,11 @@ function initializeRealistic3DFarm() {
         scene.add(cloudGroup);
     });
     
-    // Animation loop
+    // Animation
     function animate() {
         requestAnimationFrame(animate);
         controls.update();
         
-        // Gentle cloud movement
         const time = Date.now() * 0.0005;
         scene.children.forEach(child => {
             if (child.isGroup && child.children.length === 4 && child.children[0] instanceof THREE.Mesh && child.children[0].geometry.type === 'SphereGeometry') {
@@ -321,7 +359,7 @@ function initializeRealistic3DFarm() {
     }
     animate();
     
-    // Setup raycasting for field selection
+    // Raycaster for field selection
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
     
@@ -362,7 +400,8 @@ function initializeRealistic3DFarm() {
     document.getElementById('toggle-shadows-btn')?.addEventListener('click', () => {
         shadowsEnabled = !shadowsEnabled;
         renderer.shadowMap.enabled = shadowsEnabled;
-        document.getElementById('toggle-shadows-btn').style.opacity = shadowsEnabled ? '1' : '0.5';
+        const btn = document.getElementById('toggle-shadows-btn');
+        if (btn) btn.style.opacity = shadowsEnabled ? '1' : '0.5';
     });
     
     let wireframeMode = false;
@@ -417,7 +456,6 @@ function showFieldInfo(field, idx) {
     document.getElementById('close-panel-btn').onclick = () => panel.style.display = 'none';
 }
 
-// Update 3D plant growth based on simulation
 function update3DPlantGrowth(growthDays) {
     const growthFactor = Math.min(1, growthDays / 120);
     corianderPlants.forEach((plant, idx) => {
@@ -551,10 +589,11 @@ function initializePredictions() {
 function updateGrowthStages(days) {
     const stages = document.querySelectorAll('.stage-label');
     if (!stages.length) return;
+    const stageDays = [7, 20, 40, 25, 28];
+    let cumulative = 0;
     stages.forEach((stage, idx) => {
-        const stageDays = [7, 20, 40, 25, 28];
-        const cumulativeDays = stageDays.reduce((acc, d, i) => i <= idx ? acc + d : acc, 0);
-        if (days >= cumulativeDays - stageDays[idx] && days < cumulativeDays) {
+        cumulative += stageDays[idx];
+        if (days >= cumulative - stageDays[idx] && days < cumulative) {
             stage.classList.add('active');
         } else {
             stage.classList.remove('active');
