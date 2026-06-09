@@ -1,3 +1,6 @@
+# TwinFarm user data and SQLite database
+twinfarm-backend/data/
+
 # Logs
 logs
 *.log

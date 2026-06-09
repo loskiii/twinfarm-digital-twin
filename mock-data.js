@@ -98,14 +98,7 @@ const MockData = {
     }
 };
 
-// Make functions available globally
+// Make functions available globally (fallback when API is unavailable)
 if (typeof window !== 'undefined') {
     window.MockData = MockData;
 }
-
-// Auto-update for real-time simulation
-setInterval(() => {
-    if (typeof updateDashboardValues === 'function') {
-        updateDashboardValues();
-    }
-}, 10000);

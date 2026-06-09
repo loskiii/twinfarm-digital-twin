@@ -28,7 +28,7 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <!-- Skip to content link for accessibility -->
+    
     <a href="#main-content" class="skip-link">Skip to main content</a>
 
     <!-- Navigation -->
@@ -38,7 +38,7 @@
                 <i class="fas fa-seedling" aria-hidden="true"></i>
                 <span>Twin<span class="logo-highlight">Farm</span></span>
             </div>
-            <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Menu">
+            <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Menu" aria-expanded="false" aria-controls="nav-links">
                 <i class="fas fa-bars"></i>
             </button>
             <ul class="nav-links" id="nav-links">
@@ -52,7 +52,7 @@
                 <button type="button" class="btn btn-outline" id="signin-btn">Sign In</button>
                 <button type="button" class="btn btn-primary" id="signup-btn">Get Started</button>
             </div>
-            <div class="user-indicator" id="user-indicator" style="display: none;">
+            <div class="user-indicator" id="user-indicator" hidden>
                 <div class="user-avatar">
                     <i class="fas fa-user"></i>
                 </div>
@@ -127,6 +127,10 @@
                 <div class="section-header">
                     <h2>Farm Dashboard</h2>
                     <p>Real-time insights for your coriander fields</p>
+                    <div class="live-data-badge" id="live-data-badge">
+                        <span class="live-dot" aria-hidden="true"></span>
+                        <span id="live-data-label">Connecting to live data...</span>
+                    </div>
                 </div>
                 
                 <div class="dashboard-grid">
@@ -240,7 +244,7 @@
                             <span><span class="legend-color" style="background: #795548;"></span> Bare Soil</span>
                         </div>
                     </div>
-                    <div id="farm-3d-container" style="width: 100%; height: 500px; background: linear-gradient(135deg, #1a472a, #0a2f1a); border-radius: 16px; overflow: hidden;"></div>
+                    <div id="farm-3d-container"></div>
                     <div class="field-info-panel" id="field-info-panel" style="display: none;">
                         <button class="close-panel" id="close-panel-btn">&times;</button>
                         <h3 id="field-name">North Field</h3>
@@ -272,7 +276,8 @@
                         </div>
                     </div>
                     <div class="farm-instructions">
-                        <i class="fas fa-mouse-pointer"></i> Drag to rotate | Right-click + drag to pan | Scroll to zoom
+                        <span class="farm-instructions-desktop"><i class="fas fa-mouse-pointer"></i> Drag to rotate | Right-click + drag to pan | Scroll to zoom</span>
+                        <span class="farm-instructions-mobile"><i class="fas fa-hand-pointer"></i> One finger to rotate | Two fingers to pan &amp; zoom</span>
                     </div>
                 </div>
             </div>
@@ -348,7 +353,7 @@
                         <button class="btn btn-primary" id="run-simulation-btn">Update 3D Growth</button>
                     </div>
                     <div class="growth-chart-container">
-                        <canvas id="growth-chart" width="800" height="300"></canvas>
+                        <canvas id="growth-chart"></canvas>
                     </div>
                     <div class="growth-status" id="growth-status">
                         <div class="growth-stage-indicator">
@@ -407,6 +412,8 @@
                             <button class="quick-question">How is NDVI calculated?</button>
                             <button class="quick-question">Explain the irrigation schedule</button>
                             <button class="quick-question">What causes coriander leaf yellowing?</button>
+                            <button class="quick-question">What is my crop health?</button>
+                            <button class="quick-question">How do I use the 3D farm?</button>
                         </div>
                         <div class="coriander-tips">
                             <h4><i class="fas fa-lightbulb"></i> Coriander Tip</h4>
@@ -495,6 +502,7 @@
             </div>
             <div class="modal-body">
                 <form id="signin-form">
+                    <p class="auth-error" id="signin-error" hidden></p>
                     <div class="form-group">
                         <label for="signin-email">Email</label>
                         <input type="email" id="signin-email" placeholder="farmer@example.com" required>
@@ -503,7 +511,7 @@
                         <label for="signin-password">Password</label>
                         <input type="password" id="signin-password" placeholder="••••••••" required>
                     </div>
-                    <button type="submit" class="btn btn-primary btn-block">Sign In</button>
+                    <button type="submit" class="btn btn-primary btn-block" id="signin-submit-btn">Sign In</button>
                 </form>
                 <div class="modal-divider">or</div>
                 <button class="btn btn-outline btn-block" id="demo-signin">Use Demo Account</button>
@@ -520,6 +528,7 @@
             </div>
             <div class="modal-body">
                 <form id="signup-form">
+                    <p class="auth-error" id="signup-error" hidden></p>
                     <div class="form-row">
                         <div class="form-group half">
                             <label for="signup-firstname">First Name</label>
@@ -551,7 +560,7 @@
                         <label for="signup-confirm">Confirm Password</label>
                         <input type="password" id="signup-confirm" required>
                     </div>
-                    <button type="submit" class="btn btn-primary btn-block">Create Account</button>
+                    <button type="submit" class="btn btn-primary btn-block" id="signup-submit-btn">Create Account</button>
                 </form>
                 <p class="modal-footer-text">Already have an account? <a href="#" id="switch-to-signin">Sign in</a></p>
             </div>
@@ -560,7 +569,8 @@
 
     <div id="notification" class="notification" style="display: none;"></div>
 
-    <script type="module" src="script.js"></script>
     <script src="mock-data.js"></script>
+    <script src="chatbot.js"></script>
+    <script type="module" src="script.js"></script>
 </body>
 </html>

@@ -1,11 +1,9 @@
-// TwinFarm - Complete Application with Realistic 3D Visualization
-// Collins Omollo | Backend & FIWARE Integration
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 
-// ==================== GLOBAL VARIABLES ====================
+
 let currentUser = null;
 let scene, camera, renderer, labelRenderer, controls;
 let fields = [];
@@ -13,15 +11,16 @@ let fieldMeshes = [];
 let corianderPlants = [];
 let currentCropHealth = [0.85, 0.65, 0.92, 0.48, 0.78, 0.72];
 let growthChart = null;
+let weatherChart = null;
 let currentGrowthDays = 45;
 let animationId = null;
 let sunLight;
+let farmMap = null;
+let mapFieldMarkers = [];
+let liveDataInterval = null;
+let usingLiveApi = false;
 
-// Demo user accounts
-const demoUsers = [
-    { email: "demo@twinfarm.com", password: "demo123", firstName: "Demo", lastName: "Farmer", farmSize: "medium" },
-    { email: "farmer@example.com", password: "farmer123", firstName: "John", lastName: "Kamau", farmSize: "small" }
-];
+const AUTH_TOKEN_KEY = 'twinfarm_auth_token';
 
 // Field data with realistic positions
 const fieldData = [
@@ -34,45 +33,50 @@ const fieldData = [
 ];
 
 // ==================== MOBILE MENU TOGGLE ====================
+function setMobileMenuOpen(open) {
+    const mobileBtn = document.getElementById('mobile-menu-btn');
+    const navLinks = document.getElementById('nav-links');
+    const navbar = document.querySelector('.navbar');
+    if (!mobileBtn || !navLinks || !navbar) return;
+
+    navbar.classList.toggle('menu-open', open);
+    document.body.classList.toggle('menu-open', open);
+    mobileBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+
+    const icon = mobileBtn.querySelector('i');
+    if (icon) {
+        icon.classList.toggle('fa-bars', !open);
+        icon.classList.toggle('fa-times', open);
+    }
+}
+
 function initializeMobileMenu() {
     const mobileBtn = document.getElementById('mobile-menu-btn');
     const navLinks = document.getElementById('nav-links');
-    
-    if (mobileBtn && navLinks) {
+    const navbar = document.querySelector('.navbar');
+
+    if (mobileBtn && navLinks && navbar) {
         mobileBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            navLinks.classList.toggle('show');
-            
-            const icon = mobileBtn.querySelector('i');
-            if (navLinks.classList.contains('show')) {
-                icon.classList.remove('fa-bars');
-                icon.classList.add('fa-times');
-            } else {
-                icon.classList.remove('fa-times');
-                icon.classList.add('fa-bars');
-            }
+            setMobileMenuOpen(!navbar.classList.contains('menu-open'));
         });
-        
+
         document.addEventListener('click', (e) => {
-            if (!navLinks.contains(e.target) && !mobileBtn.contains(e.target)) {
-                navLinks.classList.remove('show');
-                const icon = mobileBtn.querySelector('i');
-                if (icon) {
-                    icon.classList.remove('fa-times');
-                    icon.classList.add('fa-bars');
-                }
+            if (!navbar.contains(e.target)) {
+                setMobileMenuOpen(false);
             }
         });
-        
+
         document.querySelectorAll('.nav-link').forEach(link => {
-            link.addEventListener('click', () => {
-                navLinks.classList.remove('show');
-                const icon = mobileBtn.querySelector('i');
-                if (icon) {
-                    icon.classList.remove('fa-times');
-                    icon.classList.add('fa-bars');
-                }
-            });
+            link.addEventListener('click', () => setMobileMenuOpen(false));
+        });
+
+        document.querySelectorAll('#auth-buttons .btn').forEach(btn => {
+            btn.addEventListener('click', () => setMobileMenuOpen(false));
+        });
+
+        window.addEventListener('resize', () => {
+            if (window.innerWidth > 768) setMobileMenuOpen(false);
         });
     }
 }
@@ -88,6 +92,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initializePredictions();
     initializeChatbot();
     initializeAuth();
+    restoreAuthSession();
     initializeDemoButton();
     initializeMobileMenu(); // Mobile menu toggle
     
@@ -363,31 +368,48 @@ function initializeRealistic3DFarm() {
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
     
-    renderer.domElement.addEventListener('click', (event) => {
+    function selectFieldAtClient(clientX, clientY) {
         const rect = renderer.domElement.getBoundingClientRect();
-        mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-        mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-        
+        mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+
         raycaster.setFromCamera(mouse, camera);
         const intersects = raycaster.intersectObjects(fieldMeshes);
-        
+
         if (intersects.length > 0) {
-            const hit = intersects[0];
-            const fieldIdx = hit.object.userData.index;
+            const fieldIdx = intersects[0].object.userData.index;
             if (fieldIdx !== undefined) {
                 showFieldInfo(fieldData[fieldIdx], fieldIdx);
             }
         }
+    }
+
+    renderer.domElement.addEventListener('click', (event) => {
+        selectFieldAtClient(event.clientX, event.clientY);
     });
-    
-    window.addEventListener('resize', () => {
+
+    renderer.domElement.addEventListener('touchend', (event) => {
+        if (event.changedTouches.length === 1) {
+            const touch = event.changedTouches[0];
+            selectFieldAtClient(touch.clientX, touch.clientY);
+        }
+    }, { passive: true });
+
+    function resizeFarmViewport() {
         const width = container.clientWidth;
         const height = container.clientHeight;
+        if (!width || !height) return;
         camera.aspect = width / height;
         camera.updateProjectionMatrix();
         renderer.setSize(width, height);
         labelRenderer.setSize(width, height);
-    });
+    }
+
+    window.addEventListener('resize', resizeFarmViewport);
+    if (typeof ResizeObserver !== 'undefined') {
+        const farmResizeObserver = new ResizeObserver(resizeFarmViewport);
+        farmResizeObserver.observe(container);
+    }
     
     // Control buttons
     document.getElementById('reset-camera-btn')?.addEventListener('click', () => {
@@ -448,8 +470,8 @@ function showFieldInfo(field, idx) {
     document.getElementById('field-health').textContent = `${Math.round(field.health * 100)}%`;
     document.getElementById('field-area').textContent = `${field.area} acres`;
     document.getElementById('field-moisture').textContent = `${field.moisture}%`;
-    document.getElementById('field-yield').textContent = `${(5 + field.health * 4).toFixed(1)} tons/ha`;
-    document.getElementById('field-water').textContent = `${Math.round(800 + field.health * 500)} L/day`;
+    document.getElementById('field-yield').textContent = `${(field.predictedYield || (5 + field.health * 4)).toFixed(1)} tons/ha`;
+    document.getElementById('field-water').textContent = `${field.waterNeed || Math.round(800 + field.health * 500)} L/day`;
     
     panel.style.display = 'block';
     
@@ -466,47 +488,192 @@ function update3DPlantGrowth(growthDays) {
     });
 }
 
-// ==================== DASHBOARD ====================
-function initializeDashboard() {
-    updateDashboardValues();
-    setInterval(updateDashboardValues, 8000);
-    initializeWeatherChart();
+// ==================== LIVE DATA ====================
+function setLiveDataStatus(isLive, message) {
+    const badge = document.getElementById('live-data-badge');
+    const label = document.getElementById('live-data-label');
+    if (!badge || !label) return;
+    badge.classList.toggle('offline', !isLive);
+    label.textContent = message;
 }
 
-function updateDashboardValues() {
+function formatUpdatedAt(isoString) {
+    if (!isoString) return 'just now';
+    return new Date(isoString).toLocaleTimeString();
+}
+
+async function fetchFarmState() {
+    const response = await fetch('/api/farm/state', { cache: 'no-store' });
+    if (!response.ok) throw new Error('Farm API unavailable');
+    return response.json();
+}
+
+function updateGrowthStageDots(stageIndex) {
+    document.querySelectorAll('.stage-dot').forEach((dot, index) => {
+        dot.classList.toggle('active', index === stageIndex);
+    });
+}
+
+function syncFieldDataFromApi(apiFields) {
+    apiFields.forEach((field, idx) => {
+        if (!fieldData[idx]) return;
+        fieldData[idx].name = field.name;
+        fieldData[idx].health = field.health;
+        fieldData[idx].moisture = field.moisture;
+        fieldData[idx].area = field.area;
+
+        if (fields[idx]?.label?.element) {
+            fields[idx].label.element.textContent = `${field.name}\n${Math.round(field.health * 100)}% Health`;
+            fields[idx].label.element.style.borderLeftColor = field.color;
+        }
+    });
+}
+
+function updateMapMarkers(apiFields) {
+    if (!farmMap || !mapFieldMarkers.length) return;
+
+    apiFields.forEach((field, index) => {
+        const marker = mapFieldMarkers[index];
+        if (!marker) return;
+        const color = field.color;
+        const healthLabel = field.ndvi > 0.6 ? 'Good' : field.ndvi > 0.4 ? 'Moderate' : 'Poor';
+        marker.setIcon(L.divIcon({
+            html: `<div style="background:${color};width:16px;height:16px;border-radius:50%;border:2px solid white;"></div>`,
+            iconSize: [16, 16]
+        }));
+        marker.setPopupContent(`<b>${field.name}</b><br>NDVI: ${field.ndvi}<br>Moisture: ${field.moisture}%<br>Health: ${healthLabel}`);
+    });
+}
+
+function applyFarmState(state) {
+    if (!state) return;
+
+    const dashboard = state.dashboard;
+    const predictions = state.predictions;
+    const weather = state.weather;
+
+    document.getElementById('soil-moisture-value').textContent = `${Math.round(dashboard.soilMoisture)}%`;
+    document.getElementById('soil-moisture-fill').style.width = `${dashboard.soilMoisture}%`;
+    document.getElementById('soil-status').textContent = dashboard.soilMoistureStatus;
+
+    document.getElementById('crop-health-value').textContent = `${dashboard.cropHealth}/10`;
+    document.getElementById('health-fill').style.width = `${dashboard.cropHealth * 10}%`;
+    document.getElementById('health-status').textContent = dashboard.cropHealthStatus;
+
+    document.getElementById('soil-temp-value').textContent = `${Math.round(dashboard.soilTemperature)}°C`;
+    document.getElementById('temp-fill').style.width = `${((dashboard.soilTemperature - 15) / 20) * 100}%`;
+    document.getElementById('temp-status').textContent = dashboard.soilTempStatus;
+
+    document.getElementById('growth-stage-value').textContent = dashboard.growthStage;
+    document.getElementById('days-to-harvest').textContent = dashboard.daysToHarvest;
+    updateGrowthStageDots(dashboard.stageIndex);
+
+    if (predictions) {
+        document.getElementById('yield-prediction').textContent = predictions.yield;
+        document.getElementById('yield-confidence').style.width = `${predictions.yieldConfidence}%`;
+        document.getElementById('yield-confidence-text').textContent = `${predictions.yieldConfidence}%`;
+        document.getElementById('irrigation-amount').textContent = predictions.irrigationLitersPerDay.toLocaleString();
+        document.getElementById('irrigation-time').textContent = `${predictions.irrigationNextHours} hours`;
+        document.getElementById('harvest-days').textContent = predictions.harvestDays;
+        document.getElementById('harvest-range').innerHTML = `<strong>${predictions.harvestRange}</strong>`;
+    }
+
+    if (weather && weatherChart) {
+        weatherChart.data.labels = weather.labels;
+        weatherChart.data.datasets[0].data = weather.temperature;
+        weatherChart.data.datasets[1].data = weather.humidity;
+        weatherChart.update('none');
+    }
+
+    if (state.fields?.length) {
+        const avgNdvi = state.fields.reduce((sum, field) => sum + field.ndvi, 0) / state.fields.length;
+        document.getElementById('avg-ndvi').textContent = avgNdvi.toFixed(2);
+        document.getElementById('map-update-time').textContent = formatUpdatedAt(state.updatedAt);
+        syncFieldDataFromApi(state.fields);
+        updateMapMarkers(state.fields);
+    }
+
+    const heroHealth = document.querySelector('.health-value');
+    if (heroHealth && dashboard.cropHealth) {
+        heroHealth.textContent = `${Math.round(dashboard.cropHealth * 10)}%`;
+    }
+    const heroProgress = document.querySelector('.preview-progress .progress-fill');
+    if (heroProgress && dashboard.cropHealth) {
+        heroProgress.style.width = `${dashboard.cropHealth * 10}%`;
+    }
+
+    setLiveDataStatus(true, `Live simulated data · Updated ${formatUpdatedAt(state.updatedAt)}`);
+}
+
+function updateDashboardValuesFallback() {
     const mock = window.MockData;
     if (!mock) return;
-    
+
     const soilMoisture = mock.getSensorReading('soilMoisture');
     const temperature = mock.getSensorReading('temperature');
     const health = mock.getFieldHealth('field-a');
-    
-    document.getElementById('soil-moisture-value').textContent = `${Math.round(soilMoisture)}%`;
-    document.getElementById('soil-moisture-fill').style.width = `${soilMoisture}%`;
-    document.getElementById('soil-status').textContent = soilMoisture > 60 ? 'Optimal for coriander' : soilMoisture > 40 ? 'Moderate - consider irrigation' : 'Low - irrigation needed';
-    
-    document.getElementById('crop-health-value').textContent = `${(health * 10).toFixed(1)}/10`;
-    document.getElementById('health-fill').style.width = `${health * 100}%`;
-    document.getElementById('health-status').textContent = health > 0.7 ? 'Good condition' : health > 0.4 ? 'Monitor closely' : 'Needs attention';
-    
-    document.getElementById('soil-temp-value').textContent = `${Math.round(temperature)}°C`;
-    document.getElementById('temp-fill').style.width = `${((temperature - 15) / 20) * 100}%`;
-    document.getElementById('temp-status').textContent = (temperature >= 18 && temperature <= 28) ? 'Ideal for coriander' : 'Suboptimal';
-    
     const daysSincePlanting = mock.getDaysSince('2025-01-15');
     const growthStages = ['Germination', 'Seedling', 'Vegetative', 'Flowering', 'Maturation'];
     const stageIndex = Math.min(Math.floor(daysSincePlanting / 25), 4);
-    document.getElementById('growth-stage-value').textContent = growthStages[stageIndex];
-    document.getElementById('days-to-harvest').textContent = Math.max(0, 120 - daysSincePlanting);
+
+    applyFarmState({
+        updatedAt: new Date().toISOString(),
+        dashboard: {
+            soilMoisture,
+            soilMoistureStatus: soilMoisture > 60 ? 'Optimal for coriander' : soilMoisture > 40 ? 'Moderate - consider irrigation' : 'Low - irrigation needed',
+            cropHealth: Number((health * 10).toFixed(1)),
+            cropHealthStatus: health > 0.7 ? 'Good condition' : health > 0.4 ? 'Monitor closely' : 'Needs attention',
+            soilTemperature: Math.round(temperature),
+            soilTempStatus: (temperature >= 18 && temperature <= 28) ? 'Ideal for coriander' : 'Suboptimal',
+            growthStage: growthStages[stageIndex],
+            stageIndex,
+            daysToHarvest: Math.max(0, 120 - daysSincePlanting)
+        },
+        weather: {
+            labels: ['6AM', '9AM', '12PM', '3PM', '6PM', '9PM'],
+            temperature: [18, 22, 26, 28, 24, 20],
+            humidity: [75, 68, 55, 52, 60, 70]
+        },
+        fields: fieldData.map((field) => ({
+            ...field,
+            ndvi: field.health * 0.8,
+            color: field.health > 0.7 ? '#4CAF50' : field.health > 0.4 ? '#FF9800' : '#F44336'
+        }))
+    });
+
+    setLiveDataStatus(false, 'Offline fallback data · Start Node server for live simulation');
+}
+
+async function refreshFarmData() {
+    try {
+        const state = await fetchFarmState();
+        usingLiveApi = true;
+        applyFarmState(state);
+    } catch {
+        usingLiveApi = false;
+        updateDashboardValuesFallback();
+    }
+}
+
+function startLiveDataFeed() {
+    refreshFarmData();
+    if (liveDataInterval) clearInterval(liveDataInterval);
+    liveDataInterval = setInterval(refreshFarmData, 5000);
+}
+
+// ==================== DASHBOARD ====================
+function initializeDashboard() {
+    initializeWeatherChart();
+    startLiveDataFeed();
 }
 
 function initializeWeatherChart() {
     const container = document.getElementById('weather-chart');
     if (!container) return;
-    container.innerHTML = '<canvas id="weather-canvas" style="height:200px; width:100%"></canvas>';
+    container.innerHTML = '<canvas id="weather-canvas"></canvas>';
     const ctx = document.getElementById('weather-canvas').getContext('2d');
-    
-    new Chart(ctx, {
+
+    weatherChart = new Chart(ctx, {
         type: 'line',
         data: {
             labels: ['6AM', '9AM', '12PM', '3PM', '6PM', '9PM'],
@@ -515,7 +682,16 @@ function initializeWeatherChart() {
                 { label: 'Humidity (%)', data: [75, 68, 55, 52, 60, 70], borderColor: '#2196F3', tension: 0.4, fill: false }
             ]
         },
-        options: { responsive: true, maintainAspectRatio: true }
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 400 },
+            plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } } },
+            scales: {
+                x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 6 } },
+                y: { ticks: { maxTicksLimit: 5 } }
+            }
+        }
     });
 }
 
@@ -524,7 +700,7 @@ function initializeMaps() {
     const mapContainer = document.getElementById('farm-map');
     if (!mapContainer) return;
     
-    const farmMap = L.map('farm-map').setView([-1.2921, 36.8219], 13);
+    farmMap = L.map('farm-map', { tap: true }).setView([-1.2921, 36.8219], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(farmMap);
     
     const ndviCanvas = document.createElement('canvas');
@@ -540,25 +716,29 @@ function initializeMaps() {
     ctx.fillRect(0, 0, 800, 800);
     L.imageOverlay(ndviCanvas.toDataURL(), [[-1.3021, 36.8119], [-1.2821, 36.8319]], { opacity: 0.6 }).addTo(farmMap);
     
-    const fieldMarkers = [
-        { lat: -1.2921, lng: 36.8219, name: "North Field", ndvi: 0.78 },
-        { lat: -1.2881, lng: 36.8259, name: "East Field", ndvi: 0.52 },
-        { lat: -1.2961, lng: 36.8179, name: "South Field", ndvi: 0.85 },
-        { lat: -1.2901, lng: 36.8139, name: "West Field", ndvi: 0.35 },
-        { lat: -1.2941, lng: 36.8299, name: "Central Field", ndvi: 0.68 }
-    ];
-    
-    fieldMarkers.forEach(m => {
-        const color = m.ndvi > 0.6 ? '#4CAF50' : m.ndvi > 0.4 ? '#FF9800' : '#F44336';
-        L.marker([m.lat, m.lng], { icon: L.divIcon({ html: `<div style="background:${color};width:16px;height:16px;border-radius:50%;border:2px solid white;"></div>`, iconSize: [16,16] }) })
+    mapFieldMarkers = fieldData.map((field, index) => {
+        const apiField = {
+            name: field.name,
+            lat: [-1.2921, -1.2881, -1.2961, -1.2901, -1.2941, -1.2911][index],
+            lng: [36.8219, 36.8259, 36.8179, 36.8139, 36.8299, 36.8199][index],
+            ndvi: field.health * 0.85,
+            moisture: field.moisture,
+            color: field.health > 0.7 ? '#4CAF50' : field.health > 0.4 ? '#FF9800' : '#F44336'
+        };
+        const healthLabel = apiField.ndvi > 0.6 ? 'Good' : apiField.ndvi > 0.4 ? 'Moderate' : 'Poor';
+        return L.marker([apiField.lat, apiField.lng], {
+            icon: L.divIcon({
+                html: `<div style="background:${apiField.color};width:16px;height:16px;border-radius:50%;border:2px solid white;"></div>`,
+                iconSize: [16, 16]
+            })
+        })
             .addTo(farmMap)
-            .bindPopup(`<b>${m.name}</b><br>NDVI: ${m.ndvi}<br>Health: ${m.ndvi > 0.6 ? 'Good' : m.ndvi > 0.4 ? 'Moderate' : 'Poor'}`);
+            .bindPopup(`<b>${apiField.name}</b><br>NDVI: ${apiField.ndvi.toFixed(2)}<br>Moisture: ${apiField.moisture}%<br>Health: ${healthLabel}`);
     });
-    
-    const avgNdvi = fieldMarkers.reduce((s, m) => s + m.ndvi, 0) / fieldMarkers.length;
-    document.getElementById('avg-ndvi').textContent = avgNdvi.toFixed(2);
-    document.getElementById('map-update-time').textContent = new Date().toLocaleTimeString();
-    setInterval(() => document.getElementById('map-update-time').textContent = new Date().toLocaleTimeString(), 30000);
+
+    const invalidateMapSize = () => farmMap.invalidateSize();
+    window.addEventListener('resize', invalidateMapSize);
+    window.addEventListener('orientationchange', () => setTimeout(invalidateMapSize, 150));
 }
 
 // ==================== PREDICTIONS ====================
@@ -570,7 +750,15 @@ function initializePredictions() {
             labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4', 'Week 5', 'Week 6', 'Week 7', 'Week 8'],
             datasets: [{ label: 'Coriander Height (cm)', data: [3, 8, 15, 25, 38, 52, 68, 78], borderColor: '#4CAF50', tension: 0.4, fill: false }]
         },
-        options: { responsive: true, maintainAspectRatio: true }
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } } },
+            scales: {
+                x: { ticks: { maxRotation: 45, autoSkip: true } },
+                y: { ticks: { maxTicksLimit: 6 } }
+            }
+        }
     });
     
     document.getElementById('sim-temp').addEventListener('input', (e) => document.getElementById('temp-value-display').textContent = `${e.target.value}°C`);
@@ -647,47 +835,66 @@ function runPredictionSimulation(e) {
 }
 
 // ==================== CHATBOT ====================
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 function initializeChatbot() {
     const sendBtn = document.getElementById('send-message-btn');
     const input = document.getElementById('chat-input');
     const messages = document.getElementById('chat-messages');
-    
-    const responses = {
-        "soil moisture": "Coriander prefers soil moisture between 60-75%. Our dashboard shows real-time readings for each field.",
-        "irrigation": "Based on soil moisture readings, the system recommends irrigating when moisture drops below 55%. Check the Irrigation Prediction card.",
-        "yield": "Yield predictions are calculated using NDVI data, soil conditions, and weather forecasts. Current prediction: 8.2 tons/ha.",
-        "ndvi": "NDVI (Normalized Difference Vegetation Index) measures crop health from satellite imagery. Values above 0.6 indicate healthy coriander.",
-        "harvest": "Coriander is typically ready for harvest 90-120 days after planting. Check your field's specific days-to-harvest on the Dashboard.",
-        "fertilizer": "Coriander benefits from balanced NPK fertilizer. Apply during early vegetative stage for best results.",
-        "temperature": "Coriander grows best between 18-28°C. Our sensors track soil temperature in real-time.",
-        "3d": "Our 3D farm uses realistic terrain, dynamic shadows, and detailed coriander plant models. Drag to rotate, scroll to zoom!",
-        "demo": "Click 'Use Demo Account' on the sign-in modal. Demo credentials: demo@twinfarm.com / demo123",
-        "default": "I'm your coriander farming assistant. Ask about soil moisture, irrigation, yield predictions, NDVI, harvest timing, or the 3D farm!"
-    };
-    
+    const assistant = window.TwinFarmAssistant;
+    let isReplying = false;
+
     function addMessage(text, isUser) {
         const div = document.createElement('div');
         div.className = `message ${isUser ? 'user-message' : 'bot-message'}`;
-        div.innerHTML = `<div class="message-content">${text}</div>`;
+        const content = document.createElement('div');
+        content.className = 'message-content';
+        if (isUser) {
+            content.textContent = text;
+        } else {
+            content.innerHTML = text;
+        }
+        div.appendChild(content);
         messages.appendChild(div);
         messages.scrollTop = messages.scrollHeight;
+        return div;
     }
-    
+
+    function showTypingIndicator() {
+        const div = document.createElement('div');
+        div.className = 'message bot-message typing-indicator';
+        div.innerHTML = '<div class="message-content"><span></span><span></span><span></span></div>';
+        messages.appendChild(div);
+        messages.scrollTop = messages.scrollHeight;
+        return div;
+    }
+
     function processInput() {
         const text = input.value.trim();
-        if (!text) return;
+        if (!text || isReplying) return;
+
         addMessage(text, true);
         input.value = '';
-        
+        isReplying = true;
+        sendBtn.disabled = true;
+
+        const typing = showTypingIndicator();
+        const delay = 400 + Math.min(text.length * 15, 600);
+
         setTimeout(() => {
-            let reply = responses.default;
-            for (let key in responses) {
-                if (text.toLowerCase().includes(key)) { reply = responses[key]; break; }
-            }
+            typing.remove();
+            const reply = assistant ? assistant.answer(text) : 'Assistant is loading. Please refresh the page.';
             addMessage(reply, false);
-        }, 500);
+            isReplying = false;
+            sendBtn.disabled = false;
+            input.focus();
+        }, delay);
     }
-    
+
     sendBtn.addEventListener('click', processInput);
     input.addEventListener('keypress', (e) => { if (e.key === 'Enter') processInput(); });
     document.querySelectorAll('.quick-question').forEach(btn => {
@@ -696,86 +903,243 @@ function initializeChatbot() {
 }
 
 // ==================== AUTHENTICATION ====================
+function getAuthToken() {
+    return localStorage.getItem(AUTH_TOKEN_KEY);
+}
+
+function setAuthToken(token) {
+    if (token) {
+        localStorage.setItem(AUTH_TOKEN_KEY, token);
+    } else {
+        localStorage.removeItem(AUTH_TOKEN_KEY);
+    }
+}
+
+async function authRequest(path, options = {}) {
+    const headers = {
+        'Content-Type': 'application/json',
+        ...(options.headers || {})
+    };
+    const token = getAuthToken();
+    if (token) {
+        headers.Authorization = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`/api/auth${path}`, {
+        ...options,
+        headers
+    });
+
+    let data = {};
+    try {
+        data = await response.json();
+    } catch {
+        data = {};
+    }
+
+    if (!response.ok) {
+        throw new Error(data.error || 'Something went wrong. Please try again.');
+    }
+
+    return data;
+}
+
+function setAuthError(elementId, message) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    if (message) {
+        el.textContent = message;
+        el.hidden = false;
+    } else {
+        el.textContent = '';
+        el.hidden = true;
+    }
+}
+
+function closeAuthModals() {
+    document.getElementById('signin-modal').style.display = 'none';
+    document.getElementById('signup-modal').style.display = 'none';
+}
+
+function openAuthModal(modalId) {
+    setAuthError('signin-error', '');
+    setAuthError('signup-error', '');
+    document.getElementById(modalId).style.display = 'flex';
+}
+
+function setAuthSubmitting(formType, isSubmitting) {
+    const button = document.getElementById(`${formType}-submit-btn`);
+    if (!button) return;
+    button.disabled = isSubmitting;
+    button.textContent = isSubmitting
+        ? (formType === 'signin' ? 'Signing In...' : 'Creating Account...')
+        : (formType === 'signin' ? 'Sign In' : 'Create Account');
+}
+
 function initializeAuth() {
     const signinBtn = document.getElementById('signin-btn');
     const signupBtn = document.getElementById('signup-btn');
     const signinModal = document.getElementById('signin-modal');
     const signupModal = document.getElementById('signup-modal');
-    
-    document.querySelectorAll('.modal-close').forEach(btn => btn.onclick = () => { signinModal.style.display = 'none'; signupModal.style.display = 'none'; });
-    window.onclick = (e) => { if (e.target.classList.contains('modal')) { e.target.style.display = 'none'; } };
-    
-    if (signinBtn) signinBtn.onclick = () => signinModal.style.display = 'flex';
-    if (signupBtn) signupBtn.onclick = () => signupModal.style.display = 'flex';
-    
+
+    document.querySelectorAll('.modal-close').forEach(btn => btn.onclick = closeAuthModals);
+    window.onclick = (e) => { if (e.target.classList.contains('modal')) closeAuthModals(); };
+
+    if (signinBtn) signinBtn.onclick = () => openAuthModal('signin-modal');
+    if (signupBtn) signupBtn.onclick = () => openAuthModal('signup-modal');
+
     const switchToSignup = document.getElementById('switch-to-signup');
     const switchToSignin = document.getElementById('switch-to-signin');
-    if (switchToSignup) switchToSignup.onclick = (e) => { e.preventDefault(); signinModal.style.display = 'none'; signupModal.style.display = 'flex'; };
-    if (switchToSignin) switchToSignin.onclick = (e) => { e.preventDefault(); signupModal.style.display = 'none'; signinModal.style.display = 'flex'; };
-    
+    if (switchToSignup) switchToSignup.onclick = (e) => {
+        e.preventDefault();
+        openAuthModal('signup-modal');
+        signinModal.style.display = 'none';
+    };
+    if (switchToSignin) switchToSignin.onclick = (e) => {
+        e.preventDefault();
+        openAuthModal('signin-modal');
+        signupModal.style.display = 'none';
+    };
+
     const signinForm = document.getElementById('signin-form');
     const signupForm = document.getElementById('signup-form');
     if (signinForm) signinForm.onsubmit = (e) => { e.preventDefault(); handleSignIn(); };
     if (signupForm) signupForm.onsubmit = (e) => { e.preventDefault(); handleSignUp(); };
-    
+
     const demoSignin = document.getElementById('demo-signin');
     if (demoSignin) demoSignin.onclick = () => handleDemoSignIn();
-    
-    const signoutLink = document.getElementById('signout-link');
-    if (signoutLink) signoutLink.onclick = () => handleSignOut();
-}
 
-function handleSignIn() {
-    const email = document.getElementById('signin-email').value;
-    const password = document.getElementById('signin-password').value;
-    const user = demoUsers.find(u => u.email === email && u.password === password);
-    if (user) {
-        currentUser = user;
-        document.getElementById('signin-modal').style.display = 'none';
-        updateUIForLoggedInUser(user);
-        showNotification(`Welcome back, ${user.firstName}!`);
-    } else {
-        alert('Invalid credentials. Try demo@twinfarm.com / demo123');
+    const signoutLink = document.getElementById('signout-link');
+    if (signoutLink) signoutLink.onclick = (e) => {
+        e.preventDefault();
+        handleSignOut();
+    };
+
+    const userIndicator = document.getElementById('user-indicator');
+    if (userIndicator) {
+        userIndicator.addEventListener('click', (e) => {
+            if (window.matchMedia('(max-width: 768px)').matches) {
+                e.stopPropagation();
+                userIndicator.classList.toggle('open');
+            }
+        });
+        document.addEventListener('click', () => userIndicator.classList.remove('open'));
     }
 }
 
-function handleSignUp() {
-    const firstName = document.getElementById('signup-firstname').value;
-    const lastName = document.getElementById('signup-lastname').value;
-    const email = document.getElementById('signup-email').value;
+async function restoreAuthSession() {
+    if (!getAuthToken()) return;
+
+    try {
+        const data = await authRequest('/me');
+        currentUser = data.user;
+        updateUIForLoggedInUser(currentUser);
+    } catch {
+        setAuthToken(null);
+        currentUser = null;
+    }
+}
+
+async function handleSignIn() {
+    const email = document.getElementById('signin-email').value.trim();
+    const password = document.getElementById('signin-password').value;
+    setAuthError('signin-error', '');
+
+    if (!email || !password) {
+        setAuthError('signin-error', 'Email and password are required.');
+        return;
+    }
+
+    setAuthSubmitting('signin', true);
+    try {
+        const data = await authRequest('/signin', {
+            method: 'POST',
+            body: JSON.stringify({ email, password })
+        });
+        setAuthToken(data.token);
+        currentUser = data.user;
+        document.getElementById('signin-form').reset();
+        closeAuthModals();
+        updateUIForLoggedInUser(currentUser);
+        showNotification(`Welcome back, ${currentUser.firstName}!`);
+    } catch (error) {
+        setAuthError('signin-error', error.message);
+    } finally {
+        setAuthSubmitting('signin', false);
+    }
+}
+
+async function handleSignUp() {
+    const firstName = document.getElementById('signup-firstname').value.trim();
+    const lastName = document.getElementById('signup-lastname').value.trim();
+    const email = document.getElementById('signup-email').value.trim();
     const password = document.getElementById('signup-password').value;
     const confirm = document.getElementById('signup-confirm').value;
-    if (password !== confirm) { alert('Passwords do not match'); return; }
-    const newUser = { email, password, firstName, lastName, farmSize: document.getElementById('signup-farm-size').value };
-    demoUsers.push(newUser);
-    currentUser = newUser;
-    document.getElementById('signup-modal').style.display = 'none';
-    updateUIForLoggedInUser(newUser);
-    showNotification(`Welcome to TwinFarm, ${firstName}!`);
+    const farmSize = document.getElementById('signup-farm-size').value;
+    setAuthError('signup-error', '');
+
+    if (!firstName || !lastName || !email || !password) {
+        setAuthError('signup-error', 'Please fill in all required fields.');
+        return;
+    }
+    if (password !== confirm) {
+        setAuthError('signup-error', 'Passwords do not match.');
+        return;
+    }
+    if (password.length < 6) {
+        setAuthError('signup-error', 'Password must be at least 6 characters.');
+        return;
+    }
+
+    setAuthSubmitting('signup', true);
+    try {
+        const data = await authRequest('/signup', {
+            method: 'POST',
+            body: JSON.stringify({ firstName, lastName, email, password, farmSize })
+        });
+        setAuthToken(data.token);
+        currentUser = data.user;
+        document.getElementById('signup-form').reset();
+        closeAuthModals();
+        updateUIForLoggedInUser(currentUser);
+        showNotification(`Welcome to TwinFarm, ${currentUser.firstName}!`);
+    } catch (error) {
+        setAuthError('signup-error', error.message);
+    } finally {
+        setAuthSubmitting('signup', false);
+    }
 }
 
-function handleDemoSignIn() {
-    currentUser = demoUsers[0];
-    document.getElementById('signin-modal').style.display = 'none';
-    updateUIForLoggedInUser(currentUser);
-    showNotification('Welcome to the TwinFarm Demo! Explore the realistic 3D farm.');
+async function handleDemoSignIn() {
+    document.getElementById('signin-email').value = 'demo@twinfarm.com';
+    document.getElementById('signin-password').value = 'demo123';
+    await handleSignIn();
 }
 
-function handleSignOut() {
+async function handleSignOut() {
+    try {
+        await authRequest('/signout', { method: 'POST' });
+    } catch {
+        // Clear local session even if the server request fails.
+    }
+
+    setAuthToken(null);
     currentUser = null;
     const authBtns = document.getElementById('auth-buttons');
     const userIndicator = document.getElementById('user-indicator');
-    if (authBtns) authBtns.style.display = 'flex';
-    if (userIndicator) userIndicator.style.display = 'none';
+    document.body.classList.remove('logged-in');
+    if (authBtns) authBtns.hidden = false;
+    if (userIndicator) userIndicator.hidden = true;
     showNotification('You have been signed out.');
 }
 
 function updateUIForLoggedInUser(user) {
     const authBtns = document.getElementById('auth-buttons');
     const userIndicator = document.getElementById('user-indicator');
-    if (authBtns) authBtns.style.display = 'none';
+    document.body.classList.add('logged-in');
+    if (authBtns) authBtns.hidden = true;
     if (userIndicator) {
-        userIndicator.style.display = 'flex';
+        userIndicator.hidden = false;
         const userNameSpan = document.getElementById('user-name');
         if (userNameSpan) userNameSpan.textContent = user.firstName;
     }
