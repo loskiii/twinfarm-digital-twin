@@ -19,8 +19,15 @@ let farmMap = null;
 let mapFieldMarkers = [];
 let liveDataInterval = null;
 let usingLiveApi = false;
+let mlLiveInterval = null;
+let liveDataFallbackTimer = null;
+let liveDataResolved = false;
+let farmSceneReady = false;
 
 const AUTH_TOKEN_KEY = 'twinfarm_auth_token';
+const WEATHER_API_URL = 'https://api.open-meteo.com/v1/forecast?latitude=-1.2921&longitude=36.8219&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=Africa%2FNairobi&forecast_days=3';
+const JKUAT_LAT = -1.0914;
+const JKUAT_LNG = 37.0101;
 
 // Field data with realistic positions
 const fieldData = [
@@ -94,8 +101,9 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeAuth();
     restoreAuthSession();
     initializeDemoButton();
-    initializeMobileMenu(); // Mobile menu toggle
-    
+    initializeMobileMenu();
+    initializeMlLiveValues();
+
     console.log("TwinFarm Platform Ready!");
 });
 
@@ -119,15 +127,23 @@ function initializeRealistic3DFarm() {
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.domElement.style.position = 'absolute';
+    renderer.domElement.style.top = '0';
+    renderer.domElement.style.left = '0';
+    renderer.domElement.style.width = '100%';
+    renderer.domElement.style.height = '100%';
     container.appendChild(renderer.domElement);
     
     // CSS2 Renderer for labels
     labelRenderer = new CSS2DRenderer();
     labelRenderer.setSize(container.clientWidth, container.clientHeight);
     labelRenderer.domElement.style.position = 'absolute';
-    labelRenderer.domElement.style.top = '0px';
-    labelRenderer.domElement.style.left = '0px';
+    labelRenderer.domElement.style.top = '0';
+    labelRenderer.domElement.style.left = '0';
+    labelRenderer.domElement.style.width = '100%';
+    labelRenderer.domElement.style.height = '100%';
     labelRenderer.domElement.style.pointerEvents = 'none';
+    labelRenderer.domElement.style.zIndex = '2';
     container.appendChild(labelRenderer.domElement);
     
     // Controls
@@ -347,20 +363,30 @@ function initializeRealistic3DFarm() {
         scene.add(cloudGroup);
     });
     
+    function hideFarmLoading() {
+        const loadingEl = document.getElementById('farm-3d-loading');
+        if (loadingEl) loadingEl.classList.add('hidden');
+    }
+
     // Animation
     function animate() {
         requestAnimationFrame(animate);
         controls.update();
-        
+
         const time = Date.now() * 0.0005;
         scene.children.forEach(child => {
             if (child.isGroup && child.children.length === 4 && child.children[0] instanceof THREE.Mesh && child.children[0].geometry.type === 'SphereGeometry') {
                 child.position.x += Math.sin(time) * 0.001;
             }
         });
-        
+
         renderer.render(scene, camera);
         labelRenderer.render(scene, camera);
+
+        if (!farmSceneReady) {
+            farmSceneReady = true;
+            hideFarmLoading();
+        }
     }
     animate();
     
@@ -410,7 +436,12 @@ function initializeRealistic3DFarm() {
         const farmResizeObserver = new ResizeObserver(resizeFarmViewport);
         farmResizeObserver.observe(container);
     }
-    
+
+    requestAnimationFrame(() => {
+        resizeFarmViewport();
+        setTimeout(hideFarmLoading, 1200);
+    });
+
     // Control buttons
     document.getElementById('reset-camera-btn')?.addEventListener('click', () => {
         camera.position.set(25, 20, 30);
@@ -488,13 +519,142 @@ function update3DPlantGrowth(growthDays) {
     });
 }
 
+function getMlSensorInputs() {
+    const ml = window.TwinFarmML;
+    if (ml && typeof ml.getDefaultSensors === 'function') {
+        return ml.getDefaultSensors();
+    }
+    return {
+        soilMoisture: 68,
+        temperature: 23,
+        humidity: 65,
+        light: 1000,
+        dayNumber: 15
+    };
+}
+
+function healthBadgeClass(status) {
+    if (status === 'Healthy') return 'badge-healthy';
+    if (status === 'High Stress') return 'badge-stress';
+    return 'badge-moderate';
+}
+
+function updateCropHealthBadge(status, confidence) {
+    const badge = document.getElementById('crop-health-badge');
+    const healthFill = document.getElementById('health-fill');
+    const healthStatusEl = document.getElementById('health-status');
+
+    if (badge) {
+        badge.textContent = status;
+        badge.className = `crop-health-badge ${healthBadgeClass(status)}`;
+    }
+    if (healthFill) {
+        healthFill.style.width = `${Math.round((confidence ?? 0.82) * 100)}%`;
+    }
+    if (healthStatusEl) {
+        healthStatusEl.textContent = `${Math.round((confidence ?? 0.82) * 100)}% confidence · ${healthStatusText(status)}`;
+    }
+}
+
+function updateBiomassDisplay(biomass, healthConfidence) {
+    const biomassG = biomass?.biomass_g ?? 634;
+    const pct = biomass?.percentOfOptimal ?? biomass?.percent_optimal ?? 74.6;
+    const conf = healthConfidence ?? 0.82;
+
+    const yieldEl = document.getElementById('yield-prediction');
+    const yieldUnit = document.getElementById('yield-biomass-unit');
+    const yieldBar = document.getElementById('yield-biomass-bar');
+    const yieldConf = document.getElementById('yield-confidence');
+    const yieldConfText = document.getElementById('yield-confidence-text');
+    const fieldYield = document.getElementById('field-yield');
+
+    if (yieldEl) yieldEl.textContent = `${biomassG} g`;
+    if (yieldUnit) yieldUnit.textContent = `${pct}% of 850g optimal target`;
+    if (yieldBar) yieldBar.style.width = `${pct}%`;
+    if (yieldConf) yieldConf.style.width = `${Math.round(conf * 100)}%`;
+    if (yieldConfText) yieldConfText.textContent = `${Math.round(conf * 100)}%`;
+    if (fieldYield) fieldYield.textContent = `${biomassG} g (${pct}% optimal)`;
+}
+
+function growthStageIndex(stage) {
+    const map = { seed: 0, germinating: 1, seedling: 2, vegetative: 3 };
+    return map[String(stage).toLowerCase()] ?? 2;
+}
+
+function healthStatusText(status) {
+    if (status === 'Healthy') return 'Good condition';
+    if (status === 'Moderate Stress') return 'Monitor closely';
+    return 'Needs attention';
+}
+
+async function applyMlPredictionsToDashboard() {
+    const ml = window.TwinFarmML;
+    if (!ml) return;
+
+    const sensors = getMlSensorInputs();
+
+    try {
+        const health = await ml.fetchHealthStatus(sensors);
+        const growth = await ml.fetchGrowthStage(sensors);
+        const biomassFinal = await ml.fetchBiomass({
+            moisture: sensors.soilMoisture,
+            light: sensors.light,
+            stage: growth.stage,
+            temp: sensors.temperature,
+            humidity: sensors.humidity
+        });
+
+        const stageLabel = growth.stageLabel || (growth.stage ? growth.stage.charAt(0).toUpperCase() + growth.stage.slice(1) : 'Vegetative');
+
+        updateCropHealthBadge(health.status, health.confidence);
+
+        const growthStageEl = document.getElementById('growth-stage-value');
+        if (growthStageEl) growthStageEl.textContent = stageLabel;
+
+        updateGrowthStageDots(growthStageIndex(growth.stage));
+        updateGrowthStagesFromMl(growth.stage || 'vegetative');
+        updateBiomassDisplay(biomassFinal, health.confidence);
+
+        const heroHealth = document.querySelector('.health-value');
+        const heroPct = health.status === 'Healthy' ? 92 : health.status === 'Moderate Stress' ? 75 : 48;
+        if (heroHealth) heroHealth.textContent = `${heroPct}%`;
+
+        const heroProgress = document.querySelector('.preview-progress .progress-fill');
+        if (heroProgress) heroProgress.style.width = `${heroPct}%`;
+
+        window.TwinFarmLiveMl = { sensors, health, growth, biomass: biomassFinal };
+    } catch (err) {
+        console.warn('[TwinFarm] ML dashboard sync failed:', err);
+        updateCropHealthBadge('Moderate Stress', 0.82);
+        updateBiomassDisplay(null, 0.82);
+        updateGrowthStagesFromMl('vegetative');
+    }
+}
+
+function initializeMlLiveValues() {
+    applyMlPredictionsToDashboard();
+    if (mlLiveInterval) clearInterval(mlLiveInterval);
+    mlLiveInterval = setInterval(applyMlPredictionsToDashboard, 12000);
+}
+
 // ==================== LIVE DATA ====================
-function setLiveDataStatus(isLive, message) {
+function setLiveDataStatus(state, message) {
     const badge = document.getElementById('live-data-badge');
     const label = document.getElementById('live-data-label');
     if (!badge || !label) return;
-    badge.classList.toggle('offline', !isLive);
+
+    badge.classList.remove('offline', 'simulated', 'live', 'connecting', 'historical');
+    if (state === 'live') badge.classList.add('live');
+    else if (state === 'simulated') badge.classList.add('simulated');
+    else if (state === 'connecting') badge.classList.add('connecting');
+    else if (state === 'offline') badge.classList.add('offline');
+    else if (state === 'historical') badge.classList.add('historical');
+
     label.textContent = message;
+}
+
+function setHistoricalDataStatus() {
+    setLiveDataStatus('historical', 'Historical data loaded — 30-day dataset');
 }
 
 function formatUpdatedAt(isoString) {
@@ -556,10 +716,6 @@ function applyFarmState(state) {
     document.getElementById('soil-moisture-fill').style.width = `${dashboard.soilMoisture}%`;
     document.getElementById('soil-status').textContent = dashboard.soilMoistureStatus;
 
-    document.getElementById('crop-health-value').textContent = `${dashboard.cropHealth}/10`;
-    document.getElementById('health-fill').style.width = `${dashboard.cropHealth * 10}%`;
-    document.getElementById('health-status').textContent = dashboard.cropHealthStatus;
-
     document.getElementById('soil-temp-value').textContent = `${Math.round(dashboard.soilTemperature)}°C`;
     document.getElementById('temp-fill').style.width = `${((dashboard.soilTemperature - 15) / 20) * 100}%`;
     document.getElementById('temp-status').textContent = dashboard.soilTempStatus;
@@ -569,9 +725,6 @@ function applyFarmState(state) {
     updateGrowthStageDots(dashboard.stageIndex);
 
     if (predictions) {
-        document.getElementById('yield-prediction').textContent = predictions.yield;
-        document.getElementById('yield-confidence').style.width = `${predictions.yieldConfidence}%`;
-        document.getElementById('yield-confidence-text').textContent = `${predictions.yieldConfidence}%`;
         document.getElementById('irrigation-amount').textContent = predictions.irrigationLitersPerDay.toLocaleString();
         document.getElementById('irrigation-time').textContent = `${predictions.irrigationNextHours} hours`;
         document.getElementById('harvest-days').textContent = predictions.harvestDays;
@@ -587,47 +740,39 @@ function applyFarmState(state) {
 
     if (state.fields?.length) {
         const avgNdvi = state.fields.reduce((sum, field) => sum + field.ndvi, 0) / state.fields.length;
-        document.getElementById('avg-ndvi').textContent = avgNdvi.toFixed(2);
+        const avgNdviEl = document.getElementById('avg-ndvi');
+        if (avgNdviEl) avgNdviEl.textContent = avgNdvi.toFixed(2);
         document.getElementById('map-update-time').textContent = formatUpdatedAt(state.updatedAt);
         syncFieldDataFromApi(state.fields);
         updateMapMarkers(state.fields);
     }
 
-    const heroHealth = document.querySelector('.health-value');
-    if (heroHealth && dashboard.cropHealth) {
-        heroHealth.textContent = `${Math.round(dashboard.cropHealth * 10)}%`;
-    }
-    const heroProgress = document.querySelector('.preview-progress .progress-fill');
-    if (heroProgress && dashboard.cropHealth) {
-        heroProgress.style.width = `${dashboard.cropHealth * 10}%`;
-    }
-
-    setLiveDataStatus(true, `Live simulated data · Updated ${formatUpdatedAt(state.updatedAt)}`);
+    applyMlPredictionsToDashboard();
 }
 
 function updateDashboardValuesFallback() {
     const mock = window.MockData;
     if (!mock) return;
 
-    const soilMoisture = mock.getSensorReading('soilMoisture');
-    const temperature = mock.getSensorReading('temperature');
-    const health = mock.getFieldHealth('field-a');
-    const daysSincePlanting = mock.getDaysSince('2025-01-15');
-    const growthStages = ['Germination', 'Seedling', 'Vegetative', 'Flowering', 'Maturation'];
-    const stageIndex = Math.min(Math.floor(daysSincePlanting / 25), 4);
+    liveDataResolved = true;
+
+    const soilMoisture = 75;
+    const temperature = 23;
+    const growthStages = ['Seed', 'Germinating', 'Seedling', 'Vegetative'];
+    const stageIndex = 3;
 
     applyFarmState({
         updatedAt: new Date().toISOString(),
         dashboard: {
             soilMoisture,
-            soilMoistureStatus: soilMoisture > 60 ? 'Optimal for coriander' : soilMoisture > 40 ? 'Moderate - consider irrigation' : 'Low - irrigation needed',
-            cropHealth: Number((health * 10).toFixed(1)),
-            cropHealthStatus: health > 0.7 ? 'Good condition' : health > 0.4 ? 'Monitor closely' : 'Needs attention',
-            soilTemperature: Math.round(temperature),
-            soilTempStatus: (temperature >= 18 && temperature <= 28) ? 'Ideal for coriander' : 'Suboptimal',
-            growthStage: growthStages[stageIndex],
+            soilMoistureStatus: 'From 30-day basin dataset',
+            cropHealth: 8.2,
+            cropHealthStatus: 'Good condition',
+            soilTemperature: temperature,
+            soilTempStatus: 'Ideal for coriander',
+            growthStage: 'Vegetative',
             stageIndex,
-            daysToHarvest: Math.max(0, 120 - daysSincePlanting)
+            daysToHarvest: 0
         },
         weather: {
             labels: ['6AM', '9AM', '12PM', '3PM', '6PM', '9PM'],
@@ -641,104 +786,149 @@ function updateDashboardValuesFallback() {
         }))
     });
 
-    setLiveDataStatus(false, 'Offline fallback data · Start Node server for live simulation');
+    setHistoricalDataStatus();
+
+    applyMlPredictionsToDashboard();
 }
 
 async function refreshFarmData() {
     try {
         const state = await fetchFarmState();
         usingLiveApi = true;
+        liveDataResolved = true;
+        if (liveDataFallbackTimer) {
+            clearTimeout(liveDataFallbackTimer);
+            liveDataFallbackTimer = null;
+        }
         applyFarmState(state);
     } catch {
         usingLiveApi = false;
-        updateDashboardValuesFallback();
     }
 }
 
-function startLiveDataFeed() {
-    refreshFarmData();
-    if (liveDataInterval) clearInterval(liveDataInterval);
-    liveDataInterval = setInterval(refreshFarmData, 5000);
+function startHistoricalDataFeed() {
+    setHistoricalDataStatus();
+    updateDashboardValuesFallback();
 }
 
 // ==================== DASHBOARD ====================
 function initializeDashboard() {
-    initializeWeatherChart();
-    startLiveDataFeed();
+    initializeWeatherForecast();
+    startHistoricalDataFeed();
 }
 
-function initializeWeatherChart() {
+function weatherEmoji(code) {
+    if (code === 0) return '☀️';
+    if (code <= 3) return '🌤️';
+    if (code >= 51) return '🌧️';
+    return '🌤️';
+}
+
+function weatherDescription(code) {
+    const descriptions = {
+        0: 'Clear sky',
+        1: 'Mainly clear',
+        2: 'Partly cloudy',
+        3: 'Overcast',
+        45: 'Foggy',
+        48: 'Depositing rime fog',
+        51: 'Light drizzle',
+        53: 'Moderate drizzle',
+        55: 'Dense drizzle',
+        61: 'Slight rain',
+        63: 'Moderate rain',
+        65: 'Heavy rain',
+        80: 'Rain showers',
+        95: 'Thunderstorm'
+    };
+    return descriptions[code] || 'Variable conditions';
+}
+
+async function initializeWeatherForecast() {
     const container = document.getElementById('weather-chart');
     if (!container) return;
-    container.innerHTML = '<canvas id="weather-canvas"></canvas>';
-    const ctx = document.getElementById('weather-canvas').getContext('2d');
 
-    weatherChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: ['6AM', '9AM', '12PM', '3PM', '6PM', '9PM'],
-            datasets: [
-                { label: 'Temperature (°C)', data: [18, 22, 26, 28, 24, 20], borderColor: '#FF9800', tension: 0.4, fill: false },
-                { label: 'Humidity (%)', data: [75, 68, 55, 52, 60, 70], borderColor: '#2196F3', tension: 0.4, fill: false }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            animation: { duration: 400 },
-            plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } } },
-            scales: {
-                x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 6 } },
-                y: { ticks: { maxTicksLimit: 5 } }
+    container.innerHTML = '<p class="weather-loading">Loading weather data…</p>';
+
+    try {
+        const response = await fetch(WEATHER_API_URL);
+        if (!response.ok) throw new Error('Weather API failed');
+        const data = await response.json();
+
+        const current = data.current;
+        const daily = data.daily;
+        const todayDesc = weatherDescription(current.weather_code);
+        const todayEmoji = weatherEmoji(current.weather_code);
+
+        let forecastHtml = '';
+        if (daily && daily.time) {
+            for (let i = 0; i < daily.time.length; i++) {
+                const date = new Date(daily.time[i]);
+                const dayLabel = i === 0 ? 'Today' : date.toLocaleDateString('en-KE', { weekday: 'short' });
+                const emoji = weatherEmoji(daily.weather_code[i]);
+                forecastHtml += `
+                    <div class="weather-day">
+                        <span class="weather-day-label">${dayLabel}</span>
+                        <span class="weather-day-icon">${emoji}</span>
+                        <span class="weather-day-temp">${Math.round(daily.temperature_2m_min[i])}–${Math.round(daily.temperature_2m_max[i])}°C</span>
+                    </div>
+                `;
             }
         }
-    });
+
+        container.innerHTML = `
+            <div class="weather-panel">
+                <div class="weather-current">
+                    <span class="weather-current-emoji">${todayEmoji}</span>
+                    <div class="weather-current-details">
+                        <strong>${Math.round(current.temperature_2m)}°C</strong>
+                        <span>${todayDesc}</span>
+                        <span>Humidity ${current.relative_humidity_2m}% · Wind ${current.wind_speed_10m} km/h</span>
+                    </div>
+                </div>
+                <div class="weather-forecast-row">${forecastHtml}</div>
+            </div>
+        `;
+    } catch (err) {
+        console.warn('[TwinFarm] Weather fetch failed:', err);
+        container.innerHTML = '<p class="weather-unavailable">Weather data unavailable</p>';
+    }
 }
 
 // ==================== MAPS ====================
 function initializeMaps() {
     const mapContainer = document.getElementById('farm-map');
-    if (!mapContainer) return;
-    
-    farmMap = L.map('farm-map', { tap: true }).setView([-1.2921, 36.8219], 13);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(farmMap);
-    
-    const ndviCanvas = document.createElement('canvas');
-    ndviCanvas.width = 800;
-    ndviCanvas.height = 800;
-    const ctx = ndviCanvas.getContext('2d');
-    const grad = ctx.createLinearGradient(0, 0, 800, 800);
-    grad.addColorStop(0, '#F44336');
-    grad.addColorStop(0.3, '#FF9800');
-    grad.addColorStop(0.6, '#FFC107');
-    grad.addColorStop(1, '#4CAF50');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 800, 800);
-    L.imageOverlay(ndviCanvas.toDataURL(), [[-1.3021, 36.8119], [-1.2821, 36.8319]], { opacity: 0.6 }).addTo(farmMap);
-    
-    mapFieldMarkers = fieldData.map((field, index) => {
-        const apiField = {
-            name: field.name,
-            lat: [-1.2921, -1.2881, -1.2961, -1.2901, -1.2941, -1.2911][index],
-            lng: [36.8219, 36.8259, 36.8179, 36.8139, 36.8299, 36.8199][index],
-            ndvi: field.health * 0.85,
-            moisture: field.moisture,
-            color: field.health > 0.7 ? '#4CAF50' : field.health > 0.4 ? '#FF9800' : '#F44336'
-        };
-        const healthLabel = apiField.ndvi > 0.6 ? 'Good' : apiField.ndvi > 0.4 ? 'Moderate' : 'Poor';
-        return L.marker([apiField.lat, apiField.lng], {
-            icon: L.divIcon({
-                html: `<div style="background:${apiField.color};width:16px;height:16px;border-radius:50%;border:2px solid white;"></div>`,
-                iconSize: [16, 16]
-            })
+    if (!mapContainer || typeof L === 'undefined') return;
+
+    try {
+        farmMap = L.map('farm-map', { tap: true }).setView([JKUAT_LAT, JKUAT_LNG], 15);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap'
+        }).addTo(farmMap);
+
+        const farmBoundary = [
+            [-1.0894, 37.0071],
+            [-1.0894, 37.0131],
+            [-1.0934, 37.0131],
+            [-1.0934, 37.0071]
+        ];
+
+        L.polygon(farmBoundary, {
+            color: '#2E7D32',
+            fillColor: '#4CAF50',
+            fillOpacity: 0.45,
+            weight: 2
         })
             .addTo(farmMap)
-            .bindPopup(`<b>${apiField.name}</b><br>NDVI: ${apiField.ndvi.toFixed(2)}<br>Moisture: ${apiField.moisture}%<br>Health: ${healthLabel}`);
-    });
+            .bindPopup('TwinFarm Basin — NDVI: 0.68');
 
-    const invalidateMapSize = () => farmMap.invalidateSize();
-    window.addEventListener('resize', invalidateMapSize);
-    window.addEventListener('orientationchange', () => setTimeout(invalidateMapSize, 150));
+        const invalidateMapSize = () => farmMap.invalidateSize();
+        window.addEventListener('resize', invalidateMapSize);
+        window.addEventListener('orientationchange', () => setTimeout(invalidateMapSize, 150));
+        setTimeout(invalidateMapSize, 300);
+    } catch (err) {
+        console.warn('[TwinFarm] Leaflet map unavailable:', err);
+    }
 }
 
 // ==================== PREDICTIONS ====================
@@ -761,10 +951,18 @@ function initializePredictions() {
         }
     });
     
+    const simDays = document.getElementById('sim-days');
+    if (simDays) {
+        simDays.max = 30;
+        simDays.value = 30;
+        document.getElementById('days-value-display').textContent = '30 days';
+        currentGrowthDays = 30;
+    }
+
     document.getElementById('sim-temp').addEventListener('input', (e) => document.getElementById('temp-value-display').textContent = `${e.target.value}°C`);
     document.getElementById('sim-moisture').addEventListener('input', (e) => document.getElementById('moisture-value-display').textContent = `${e.target.value}%`);
-    document.getElementById('sim-days').addEventListener('input', (e) => {
-        const days = parseInt(e.target.value);
+    simDays?.addEventListener('input', (e) => {
+        const days = parseInt(e.target.value, 10);
         document.getElementById('days-value-display').textContent = `${days} days`;
         currentGrowthDays = days;
         updateGrowthStages(days);
@@ -772,21 +970,27 @@ function initializePredictions() {
     });
     document.getElementById('run-simulation-btn').addEventListener('click', runGrowthSimulation);
     document.querySelectorAll('.simulate-btn').forEach(btn => btn.addEventListener('click', runPredictionSimulation));
+
+    updateGrowthStagesFromMl('vegetative');
+    const dayLabel = document.getElementById('predictions-day-label');
+    if (dayLabel) dayLabel.textContent = 'Day 30 of 30';
+}
+
+function updateGrowthStagesFromMl(stage) {
+    const stageKey = String(stage || 'vegetative').toLowerCase();
+    document.querySelectorAll('.growth-stage-indicator .stage-label').forEach((label) => {
+        const labelStage = label.getAttribute('data-stage');
+        label.classList.toggle('active', labelStage === stageKey);
+    });
 }
 
 function updateGrowthStages(days) {
-    const stages = document.querySelectorAll('.stage-label');
-    if (!stages.length) return;
-    const stageDays = [7, 20, 40, 25, 28];
-    let cumulative = 0;
-    stages.forEach((stage, idx) => {
-        cumulative += stageDays[idx];
-        if (days >= cumulative - stageDays[idx] && days < cumulative) {
-            stage.classList.add('active');
-        } else {
-            stage.classList.remove('active');
-        }
-    });
+    let stage;
+    if (days <= 7) stage = 'seed';
+    else if (days <= 14) stage = 'germinating';
+    else if (days <= 21) stage = 'seedling';
+    else stage = 'vegetative';
+    updateGrowthStagesFromMl(stage);
 }
 
 function runGrowthSimulation() {
@@ -808,19 +1012,16 @@ function runGrowthSimulation() {
     
     update3DPlantGrowth(days);
     updateGrowthStages(days);
-    
-    const predictedYield = (6 + (tempFactor + moistureFactor) * 2).toFixed(1);
-    document.getElementById('yield-prediction').textContent = predictedYield;
-    showNotification(`Simulation complete! Predicted yield: ${predictedYield} tons/ha`);
+
+    applyMlPredictionsToDashboard();
+    showNotification('Simulation complete! Biomass and growth stage updated.');
 }
 
 function runPredictionSimulation(e) {
     const type = e.target.dataset.type;
     if (type === 'yield') {
-        const newYield = (6 + Math.random() * 4).toFixed(1);
-        document.getElementById('yield-prediction').textContent = newYield;
-        document.getElementById('yield-confidence').style.width = `${75 + Math.random() * 20}%`;
-        document.getElementById('yield-confidence-text').textContent = `${75 + Math.floor(Math.random() * 20)}%`;
+        applyMlPredictionsToDashboard();
+        showNotification('Biomass estimate refreshed from ML fusion model.');
     } else if (type === 'irrigation') {
         const amount = 800 + Math.random() * 800;
         const hours = 24 + Math.random() * 72;
@@ -1149,7 +1350,14 @@ function updateUIForLoggedInUser(user) {
 function initializeNavigation() {
     const navLinks = document.querySelectorAll('.nav-link');
     const sections = document.querySelectorAll('.section');
-    
+
+    function scrollToSection(targetId) {
+        const target = document.querySelector(targetId);
+        if (target) {
+            window.scrollTo({ top: target.offsetTop - 80, behavior: 'smooth' });
+        }
+    }
+
     function highlightNav() {
         let scrollPos = window.scrollY + 100;
         sections.forEach(section => {
@@ -1165,16 +1373,22 @@ function initializeNavigation() {
             }
         });
     }
-    
+
     window.addEventListener('scroll', highlightNav);
-    
+
     navLinks.forEach(link => {
         link.addEventListener('click', function(e) {
             e.preventDefault();
-            const targetId = this.getAttribute('href');
-            const target = document.querySelector(targetId);
-            if (target) {
-                window.scrollTo({ top: target.offsetTop - 80, behavior: 'smooth' });
+            scrollToSection(this.getAttribute('href'));
+        });
+    });
+
+    document.querySelectorAll('.footer-links a[href^="#"]').forEach(link => {
+        link.addEventListener('click', function(e) {
+            const href = this.getAttribute('href');
+            if (href && href.length > 1) {
+                e.preventDefault();
+                scrollToSection(href);
             }
         });
     });
