@@ -1524,6 +1524,15 @@ footer {
     line-height: 1.5;
     max-width: 900px;
 }
+.model-lab-note {
+    font-size: 0.75rem;
+    color: #8a94a0;
+    font-style: italic;
+    margin-top: 0.35rem;
+    text-align: center;
+    line-height: 1.45;
+    max-width: 900px;
+}
 
 .analytics-sensor-readout {
     display: flex;

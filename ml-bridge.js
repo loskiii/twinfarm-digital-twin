@@ -15,7 +15,6 @@
         moisture: 70,
         temp: 25,
         humidity: 65,
-        light: 1000,
         biomass_target: 850
     };
 
@@ -26,9 +25,9 @@
         vegetative: 1.0
     };
 
-    /**
-     * Day number from 30-day hourly dataset (720 rows), capped at Day 30.
-     */
+    const DEFAULT_BIOMASS_G = 724;
+    const DEFAULT_BIOMASS_PCT = 85.2;
+
     function getCapDayNumber(hourIndex) {
         const index = hourIndex != null
             ? Number(hourIndex)
@@ -42,7 +41,6 @@
             soilMoisture: 75,
             temperature: 23,
             humidity: 65,
-            light: 946,
             dayNumber: 30
         };
     }
@@ -71,9 +69,18 @@
         }
     }
 
+    function computeBiomass(moisture, stage) {
+        const score = STAGE_SCORES[stage] ?? STAGE_SCORES.vegetative;
+        const biomass_g = Math.round(
+            ((0.6 * moisture / 100) + (0.4 * score)) * OPTIMAL_BASELINE.biomass_target * 100
+        ) / 100;
+        const percentOfOptimal = Math.round((biomass_g / OPTIMAL_BASELINE.biomass_target) * 10000) / 100;
+        return { biomass_g, percentOfOptimal };
+    }
+
     function normalizeBiomass(result) {
-        const percent = result.percentOfOptimal ?? result.percent_optimal ?? 74.6;
-        const biomassG = Number(result.biomass_g ?? 634);
+        const percent = result.percentOfOptimal ?? result.percent_optimal ?? DEFAULT_BIOMASS_PCT;
+        const biomassG = Number(result.biomass_g ?? DEFAULT_BIOMASS_G);
         return {
             ...result,
             biomass_g: biomassG,
@@ -83,15 +90,14 @@
         };
     }
 
-    function fallbackHealth({ soilMoisture, temperature, humidity, light }) {
+    function fallbackHealth({ soilMoisture, temperature, humidity }) {
         return {
             status: 'Moderate Stress',
             confidence: 0.82,
             shap: {
                 soilMoisture: roundShap((soilMoisture - 75) / 100),
                 temperature: roundShap((temperature - 25) / 100),
-                humidity: roundShap((humidity - 65) / 100),
-                light: roundShap((light - 1000) / 10000)
+                humidity: roundShap((humidity - 65) / 100)
             },
             source: 'offline_fallback'
         };
@@ -142,12 +148,8 @@
         };
     }
 
-    function fallbackBiomass({ moisture, light, stage }) {
-        const score = STAGE_SCORES[stage] ?? STAGE_SCORES.vegetative;
-        const biomass_g = Math.round(
-            ((0.4 * moisture / 100) + (0.4 * light / 1000) + (0.2 * score)) * OPTIMAL_BASELINE.biomass_target * 100
-        ) / 100;
-        const percentOfOptimal = Math.round((biomass_g / OPTIMAL_BASELINE.biomass_target) * 10000) / 100;
+    function fallbackBiomass({ moisture, stage }) {
+        const { biomass_g, percentOfOptimal } = computeBiomass(moisture, stage);
 
         return normalizeBiomass({
             biomass_g,
@@ -159,10 +161,9 @@
 
     async function predictHealth(payload) {
         const normalized = {
-            soilMoisture: Number(payload?.soilMoisture ?? 70),
-            temperature: Number(payload?.temperature ?? 25),
-            humidity: Number(payload?.humidity ?? 65),
-            light: Number(payload?.light ?? 1000)
+            soilMoisture: Number(payload?.soilMoisture ?? 75),
+            temperature: Number(payload?.temperature ?? 23),
+            humidity: Number(payload?.humidity ?? 65)
         };
 
         try {
@@ -179,8 +180,8 @@
 
     async function predictGrowth(payload) {
         const normalized = {
-            soilMoisture: Number(payload?.soilMoisture ?? 70),
-            temperature: Number(payload?.temperature ?? 25),
+            soilMoisture: Number(payload?.soilMoisture ?? 75),
+            temperature: Number(payload?.temperature ?? 23),
             humidity: Number(payload?.humidity ?? 65),
             dayNumber: Number(payload?.dayNumber ?? getCapDayNumber())
         };
@@ -201,13 +202,11 @@
     }
 
     async function getBiomass(params) {
-        const moisture = Number(params?.moisture ?? 70);
-        const light = Number(params?.light ?? 1000);
+        const moisture = Number(params?.moisture ?? 75);
         const stage = String(params?.stage ?? 'vegetative');
 
         const query = new URLSearchParams({
             moisture: String(moisture),
-            light: String(light),
             stage
         });
 
@@ -218,7 +217,7 @@
             return { ...normalizeBiomass(result), reachable: true };
         } catch (error) {
             console.warn('[ML Bridge] Biomass API unreachable:', error.message);
-            const fallback = fallbackBiomass({ moisture, light, stage });
+            const fallback = fallbackBiomass({ moisture, stage });
             return { ...fallback, reachable: false };
         }
     }
@@ -236,10 +235,7 @@
         const growth = await fetchGrowthStage(sensors);
         return getBiomass({
             moisture: params?.moisture ?? sensors.soilMoisture,
-            light: params?.light ?? sensors.light,
-            stage: params?.stage ?? growth.stage,
-            temp: params?.temp ?? sensors.temperature,
-            humidity: params?.humidity ?? sensors.humidity
+            stage: params?.stage ?? growth.stage
         });
     }
 
