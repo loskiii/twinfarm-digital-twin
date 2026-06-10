@@ -1,0 +1,7 @@
+{
+  "moisture": 70,
+  "temp": 25,
+  "humidity": 65,
+  "light": 1000,
+  "biomass_target": 850
+}

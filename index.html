@@ -45,6 +45,7 @@
                 <li><a href="#dashboard" class="nav-link active">Dashboard</a></li>
                 <li><a href="#virtual-farm" class="nav-link">3D Farm</a></li>
                 <li><a href="#predictions" class="nav-link">Predictions</a></li>
+                <li><a href="#analytics" class="nav-link">Analytics</a></li>
                 <li><a href="#map" class="nav-link">Field Map</a></li>
                 <li><a href="#chatbot" class="nav-link">Assistant</a></li>
             </ul>
@@ -109,7 +110,7 @@
                                 <i class="fas fa-seedling"></i>
                                 <div class="preview-text">
                                     <h3>Coriander Field</h3>
-                                    <p>Real-time health: <span class="health-value">87%</span></p>
+                                    <p>Recorded health: <span class="health-value">87%</span></p>
                                     <div class="preview-progress">
                                         <div class="progress-fill" style="width: 87%"></div>
                                     </div>
@@ -127,9 +128,9 @@
                 <div class="section-header">
                     <h2>Farm Dashboard</h2>
                     <p>Real-time insights for your coriander fields</p>
-                    <div class="live-data-badge" id="live-data-badge">
+                    <div class="live-data-badge historical" id="live-data-badge">
                         <span class="live-dot" aria-hidden="true"></span>
-                        <span id="live-data-label">Connecting to live data...</span>
+                        <span id="live-data-label">Historical data loaded — 30-day dataset</span>
                     </div>
                 </div>
                 
@@ -151,11 +152,11 @@
                             <i class="fas fa-leaf"></i>
                             <h3>Crop Health</h3>
                         </div>
-                        <div class="card-value" id="crop-health-value">8.4/10</div>
+                        <div class="crop-health-badge badge-moderate" id="crop-health-badge">Moderate Stress</div>
                         <div class="progress-bar">
-                            <div class="progress-fill" id="health-fill" style="width: 84%"></div>
+                            <div class="progress-fill" id="health-fill" style="width: 82%"></div>
                         </div>
-                        <p class="card-status" id="health-status">Good condition</p>
+                        <p class="card-status" id="health-status">Awaiting ML prediction...</p>
                     </div>
                     
                     <div class="dashboard-card">
@@ -202,19 +203,19 @@
                         <div class="sensor-list">
                             <div class="sensor-item">
                                 <span>Soil Moisture Sensor</span>
-                                <span class="sensor-badge active">Active</span>
+                                <span class="sensor-badge collected">Data Collected</span>
                             </div>
                             <div class="sensor-item">
                                 <span>Temperature Sensor</span>
-                                <span class="sensor-badge active">Active</span>
+                                <span class="sensor-badge collected">Data Collected</span>
                             </div>
                             <div class="sensor-item">
                                 <span>NDVI Satellite Data</span>
-                                <span class="sensor-badge simulated">Simulated</span>
+                                <span class="sensor-badge collected">Derived from sensors</span>
                             </div>
                             <div class="sensor-item">
                                 <span>Weather API</span>
-                                <span class="sensor-badge active">Active</span>
+                                <span class="sensor-badge active">Live</span>
                             </div>
                         </div>
                     </div>
@@ -244,7 +245,9 @@
                             <span><span class="legend-color" style="background: #795548;"></span> Bare Soil</span>
                         </div>
                     </div>
-                    <div id="farm-3d-container"></div>
+                    <div id="farm-3d-container">
+                        <div id="farm-3d-loading" class="farm-3d-loading">Loading 3D Farm...</div>
+                    </div>
                     <div class="field-info-panel" id="field-info-panel" style="display: none;">
                         <button class="close-panel" id="close-panel-btn">&times;</button>
                         <h3 id="field-name">North Field</h3>
@@ -292,17 +295,20 @@
                 </div>
                 
                 <div class="predictions-grid">
-                    <div class="prediction-card">
+                    <div class="prediction-card" id="biomass-prediction-card">
                         <i class="fas fa-chart-line prediction-icon"></i>
-                        <h3>Yield Prediction</h3>
-                        <div class="prediction-value" id="yield-prediction">8.2</div>
-                        <div class="prediction-unit">tons/hectare</div>
+                        <h3>Estimated Biomass</h3>
+                        <div class="prediction-value biomass-value-green" id="yield-prediction">634 g</div>
+                        <div class="prediction-unit" id="yield-biomass-unit">74.6% of 850g optimal target</div>
+                        <div class="biomass-progress-bar" aria-hidden="true">
+                            <div class="biomass-progress-fill" id="yield-biomass-bar" style="width: 74.6%"></div>
+                        </div>
                         <div class="confidence">
                             <span>Confidence</span>
                             <div class="confidence-bar">
-                                <div class="confidence-fill" id="yield-confidence" style="width: 87%"></div>
+                                <div class="confidence-fill" id="yield-confidence" style="width: 82%"></div>
                             </div>
-                            <span class="confidence-value" id="yield-confidence-text">87%</span>
+                            <span class="confidence-value" id="yield-confidence-text">82%</span>
                         </div>
                         <button class="btn btn-outline btn-small simulate-btn" data-type="yield">Run Simulation</button>
                     </div>
@@ -334,6 +340,7 @@
                 <div class="simulation-section">
                     <h3>Realistic Coriander Growth Simulator</h3>
                     <p>Watch coriander grow in realistic 3D visualization as you adjust environmental parameters</p>
+                    <p class="dataset-day-label" id="predictions-day-label">Day 30 of 30</p>
                     <div class="simulator-controls">
                         <div class="sim-control">
                             <label>Temperature (°C)</label>
@@ -347,7 +354,7 @@
                         </div>
                         <div class="sim-control">
                             <label>Growth Days</label>
-                            <input type="range" id="sim-days" min="0" max="120" value="45">
+                            <input type="range" id="sim-days" min="1" max="30" value="30">
                             <span id="days-value-display">45 days</span>
                         </div>
                         <button class="btn btn-primary" id="run-simulation-btn">Update 3D Growth</button>
@@ -356,20 +363,93 @@
                         <canvas id="growth-chart"></canvas>
                     </div>
                     <div class="growth-status" id="growth-status">
-                        <div class="growth-stage-indicator">
-                            <span class="stage-label">Germination</span>
-                            <span class="stage-label">Seedling</span>
-                            <span class="stage-label">Vegetative</span>
-                            <span class="stage-label">Flowering</span>
-                            <span class="stage-label">Maturation</span>
+                        <div class="growth-stage-indicator" id="growth-stage-indicator">
+                            <span class="stage-label" data-stage="seed">Seed</span>
+                            <span class="stage-label" data-stage="germinating">Germinating</span>
+                            <span class="stage-label" data-stage="seedling">Seedling</span>
+                            <span class="stage-label" data-stage="vegetative">Vegetative</span>
                         </div>
                     </div>
                 </div>
             </div>
         </section>
 
+        <!-- ML Analytics Section -->
+        <section id="analytics" class="section section-alt">
+            <div class="container">
+                <div class="section-header">
+                    <h2>TwinFarm AIware Analytics</h2>
+                    <p>CatBoost health classification, growth staging, and biomass fusion powered by SHAP explainability</p>
+                    <div class="analytics-toolbar">
+                        <span class="ml-api-badge" id="ml-api-badge">Connecting to ML API...</span>
+                        <button type="button" class="btn btn-outline btn-small" id="analytics-refresh-btn">
+                            <i class="fas fa-sync-alt"></i> Refresh Predictions
+                        </button>
+                    </div>
+                    <p class="model-source-label">Model 1: CatBoost → Plant Health badge | Model 2: CatBoost → Growth Stage | Model 3: Biomass Formula → Estimated Biomass</p>
+                    <div class="analytics-sensor-readout" id="analytics-sensor-readout"></div>
+                </div>
+
+                <div class="analytics-summary-grid">
+                    <div class="analytics-summary-card">
+                        <h3><i class="fas fa-heartbeat"></i> Plant Health</h3>
+                        <span class="analytics-badge" id="analytics-health-status">—</span>
+                        <p id="analytics-health-confidence">—</p>
+                    </div>
+                    <div class="analytics-summary-card">
+                        <h3><i class="fas fa-seedling"></i> Growth Stage</h3>
+                        <span class="analytics-stage" id="analytics-growth-stage">—</span>
+                        <p id="analytics-growth-confidence">—</p>
+                    </div>
+                    <div class="analytics-summary-card">
+                        <h3><i class="fas fa-weight-hanging"></i> Estimated Biomass</h3>
+                        <span class="analytics-biomass" id="analytics-biomass-value">—</span>
+                        <p id="analytics-biomass-pct">—</p>
+                    </div>
+                </div>
+
+                <div class="analytics-charts-grid">
+                    <div class="analytics-chart-card">
+                        <h3>SHAP Feature Impact</h3>
+                        <p class="chart-subtitle">Green = positive contribution, Red = negative</p>
+                        <div class="chart-container" id="shap-chart-container"></div>
+                    </div>
+                    <div class="analytics-chart-card">
+                        <h3>Biomass vs Optimal</h3>
+                        <p class="chart-subtitle">850g coriander biomass target</p>
+                        <div class="chart-container chart-container-gauge" id="biomass-gauge-container"></div>
+                    </div>
+                    <div class="analytics-chart-card wide">
+                        <h3>Growth Stage Confidence</h3>
+                        <p class="chart-subtitle">All four stages from Model 2</p>
+                        <div class="chart-container" id="growth-confidence-container"></div>
+                    </div>
+                </div>
+
+                <div class="baseline-comparison">
+                    <h3><i class="fas fa-table"></i> Baseline Comparison</h3>
+                    <p>Actual 30-day basin readings vs published optimal coriander growth parameters</p>
+                    <div class="table-responsive">
+                        <table class="baseline-table">
+                            <thead>
+                                <tr>
+                                    <th>Metric</th>
+                                    <th>Current</th>
+                                    <th>Optimal</th>
+                                    <th>Delta</th>
+                                </tr>
+                            </thead>
+                            <tbody id="baseline-comparison-body">
+                                <tr><td colspan="4">Loading ML predictions...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- Map Section -->
-        <section id="map" class="section section-alt">
+        <section id="map" class="section">
             <div class="container">
                 <div class="section-header">
                     <h2>NDVI Field Map</h2>
@@ -378,7 +458,7 @@
                 
                 <div class="map-container">
                     <div id="farm-map"></div>
-                    <div class="map-legend">
+                    <div class="map-legend map-legend-below">
                         <div class="legend-title">NDVI Scale</div>
                         <div class="legend-gradient"></div>
                         <div class="legend-labels">
@@ -467,7 +547,8 @@
                         <li><a href="#dashboard">Dashboard</a></li>
                         <li><a href="#virtual-farm">3D Farm</a></li>
                         <li><a href="#predictions">Predictions</a></li>
-                        <li><a href="#map">NDVI Map</a></li>
+                        <li><a href="#analytics">Analytics</a></li>
+                        <li><a href="#map">Field Map</a></li>
                     </ul>
                 </div>
                 <div class="footer-links">
@@ -571,6 +652,9 @@
 
     <script src="mock-data.js"></script>
     <script src="chatbot.js"></script>
+    <script src="charts.js"></script>
+    <script src="ml-bridge.js"></script>
+    <script src="analytics.js"></script>
     <script type="module" src="script.js"></script>
 </body>
 </html>
