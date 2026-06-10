@@ -20,7 +20,6 @@ def predict_health():
     moisture = data.get('soilMoisture', 75)
     temp = data.get('temperature', 23)
     humidity = data.get('humidity', 65)
-    light = data.get('light', 950)
     if moisture < 72 or temp > 30:
         status, conf = 'High Stress', 0.82
     elif moisture < 78:
@@ -31,7 +30,6 @@ def predict_health():
         'soilMoisture': round((moisture - 75) / 100, 3),
         'temperature': round((temp - 25) / 100, 3),
         'humidity': round((humidity - 65) / 100, 3),
-        'light': round((light - 1000) / 10000, 3),
     }
     return jsonify({'status': status, 'confidence': conf, 'shap': shap})
 
@@ -64,11 +62,10 @@ def predict_growth():
 @app.route('/api/ml/biomass', methods=['GET'])
 def predict_biomass():
     moisture = float(request.args.get('moisture', 75))
-    light = float(request.args.get('light', 950))
     stage = request.args.get('stage', 'vegetative')
     scores = {'seed': 0.1, 'germinating': 0.3, 'seedling': 0.6, 'vegetative': 1.0}
     biomass = round(
-        ((0.4 * moisture / 100) + (0.4 * light / 1000) + (0.2 * scores.get(stage, 1.0))) * 850,
+        ((0.6 * moisture / 100) + (0.4 * scores.get(stage, 1.0))) * 850,
         2
     )
     return jsonify({

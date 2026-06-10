@@ -12,8 +12,7 @@
         { metric: 'Soil Moisture (%)', current: 75, optimal: 70 },
         { metric: 'Temperature (°C)', current: 23, optimal: 25 },
         { metric: 'Humidity (%)', current: 65, optimal: 65 },
-        { metric: 'Light (lux)', current: 946, optimal: 1000 },
-        { metric: 'Biomass (g)', current: 634, optimal: 850 }
+        { metric: 'Biomass (g)', current: 724, optimal: 850 }
     ];
 
     function getSensorSnapshot() {
@@ -21,7 +20,7 @@
         if (ml && typeof ml.getDefaultSensors === 'function') {
             return ml.getDefaultSensors();
         }
-        return { soilMoisture: 75, temperature: 23, humidity: 65, light: 946, dayNumber: 30 };
+        return { soilMoisture: 75, temperature: 23, humidity: 65, dayNumber: 30 };
     }
 
     function calcDeltaPct(current, optimal) {
@@ -89,7 +88,7 @@
             biomassValueEl.textContent = `${biomass.biomass_g} g`;
         }
         if (biomassPctEl) {
-            const pct = biomass.percentOfOptimal ?? biomass.percent_optimal ?? 74.6;
+            const pct = biomass.percentOfOptimal ?? biomass.percent_optimal ?? 85.2;
             biomassPctEl.textContent = `${pct}% of optimal (${biomass.baseline_g || 850}g target)`;
         }
         if (apiBadge) {
@@ -105,7 +104,6 @@
                 <span><i class="fas fa-tint"></i> ${sensors.soilMoisture}% moisture</span>
                 <span><i class="fas fa-thermometer-half"></i> ${sensors.temperature}°C</span>
                 <span><i class="fas fa-water"></i> ${sensors.humidity}% humidity</span>
-                <span><i class="fas fa-sun"></i> ${sensors.light} lux</span>
                 <span><i class="fas fa-calendar-day"></i> Day 30 of 30</span>
             `;
         }
@@ -142,8 +140,7 @@
             ml.predictHealth({
                 soilMoisture: sensors.soilMoisture,
                 temperature: sensors.temperature,
-                humidity: sensors.humidity,
-                light: sensors.light
+                humidity: sensors.humidity
             }),
             ml.predictGrowth({
                 soilMoisture: sensors.soilMoisture,
@@ -155,10 +152,7 @@
 
         const biomassWithStage = await ml.getBiomass({
             moisture: sensors.soilMoisture,
-            light: sensors.light,
-            stage: growth.stage,
-            temp: sensors.temperature,
-            humidity: sensors.humidity
+            stage: growth.stage
         });
 
         if (!biomassWithStage.baseline_g) biomassWithStage.baseline_g = 850;

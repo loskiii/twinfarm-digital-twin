@@ -525,11 +525,10 @@ function getMlSensorInputs() {
         return ml.getDefaultSensors();
     }
     return {
-        soilMoisture: 68,
+        soilMoisture: 75,
         temperature: 23,
         humidity: 65,
-        light: 1000,
-        dayNumber: 15
+        dayNumber: 30
     };
 }
 
@@ -557,8 +556,8 @@ function updateCropHealthBadge(status, confidence) {
 }
 
 function updateBiomassDisplay(biomass, healthConfidence) {
-    const biomassG = biomass?.biomass_g ?? 634;
-    const pct = biomass?.percentOfOptimal ?? biomass?.percent_optimal ?? 74.6;
+    const biomassG = biomass?.biomass_g ?? 724;
+    const pct = biomass?.percentOfOptimal ?? biomass?.percent_optimal ?? 85.2;
     const conf = healthConfidence ?? 0.82;
 
     const yieldEl = document.getElementById('yield-prediction');
@@ -598,10 +597,7 @@ async function applyMlPredictionsToDashboard() {
         const growth = await ml.fetchGrowthStage(sensors);
         const biomassFinal = await ml.fetchBiomass({
             moisture: sensors.soilMoisture,
-            light: sensors.light,
-            stage: growth.stage,
-            temp: sensors.temperature,
-            humidity: sensors.humidity
+            stage: growth.stage
         });
 
         const stageLabel = growth.stageLabel || (growth.stage ? growth.stage.charAt(0).toUpperCase() + growth.stage.slice(1) : 'Vegetative');

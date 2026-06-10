@@ -49,8 +49,8 @@
 
         destroyChart(containerId);
 
-        const labels = ['Soil Moisture', 'Temperature', 'Humidity', 'Light'];
-        const keys = ['soilMoisture', 'temperature', 'humidity', 'light'];
+        const labels = ['Soil Moisture', 'Temperature', 'Humidity'];
+        const keys = ['soilMoisture', 'temperature', 'humidity'];
         const data = keys.map(k => Number(shapValues[k] ?? 0));
         const colors = data.map(shapColor);
         const borders = data.map(shapBorderColor);
